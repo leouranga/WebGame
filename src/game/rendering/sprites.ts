@@ -214,12 +214,20 @@ export const drawEnemySprite = (ctx: CanvasRenderingContext2D, enemy: Enemy, tic
   ctx.save();
   ctx.translate(enemy.pos.x, enemy.pos.y);
 
+  const hpAlpha = 0.18 + 0.82 * Math.max(0, enemy.hp / Math.max(1, enemy.maxHp));
+  ctx.globalAlpha = hpAlpha;
+
   fillEllipse(ctx, 0, enemy.height * 0.52, enemy.width * 0.42, enemy.height * 0.1, 'rgba(15,23,42,0.26)');
 
   if (enemy.kind === 'wisp') drawWisp(ctx, enemy, tick);
   if (enemy.kind === 'crusher') drawCrusher(ctx, enemy, tick);
   if (enemy.kind === 'spitter') drawSpitter(ctx, enemy, tick);
   if (enemy.kind === 'oracle') drawOracle(ctx, enemy, tick);
+
+  if (enemy.hitFlash > 0) {
+    ctx.globalAlpha = enemy.hitFlash * 0.9;
+    glow(ctx, 0, 0, Math.max(enemy.width, enemy.height) * 1.2, 'rgba(255,255,255,0.9)', 0.18);
+  }
 
   ctx.restore();
 };
@@ -236,6 +244,8 @@ export const drawMagePortrait = (
     vel: { x: 0, y: 0 },
     width: size * 0.48,
     height: size * 0.76,
+    baseWidth: size * 0.48,
+    baseHeight: size * 0.76,
     onGround: true,
     facing: 1,
     hp: 1,
@@ -255,6 +265,8 @@ export const drawMagePortrait = (
     explosionRadius: 0,
     homingStrength: 0,
     invuln: 0,
+    maxJumps: 1,
+    jumpsRemaining: 0,
   };
 
   drawMageSprite(ctx, fakePlayer, 0, 1);

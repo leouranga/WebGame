@@ -8,8 +8,40 @@ export const createProjectile = (state: GameState, projectile: Omit<Projectile, 
 
 const aimDirection = (from: Vec, to: Vec) => normalize({ x: to.x - from.x, y: to.y - from.y });
 
+const getDamageMultiplier = (state: GameState) => {
+  let multiplier = 1;
+
+  if (state.player.hp <= state.player.maxHp * 0.5 && state.effects.ragePower > 0) {
+    const missingRatio = 1 - state.player.hp / Math.max(1, state.player.maxHp * 0.5);
+    multiplier += Math.min(0.5, state.effects.ragePower) * Math.max(0, missingRatio);
+  }
+
+  return multiplier;
+};
+
+const getCriticalMultiplier = (state: GameState) => {
+  let crit = false;
+  if (state.effects.firstHitCritReady) {
+    crit = true;
+    state.effects.firstHitCritReady = false;
+  } else if (Math.random() < state.effects.critChance) {
+    crit = true;
+  }
+
+  if (!crit) return 1;
+  if (state.effects.superCrits && Math.random() < 0.18) {
+    return 2.5 + state.effects.critBonus;
+  }
+  return 1.5 + state.effects.critBonus;
+};
+
 export const firePlayerShot = (state: GameState, aim: Vec) => {
   const player = state.player;
+  const sizeMultiplier = state.effects.whiteDwarf ? 1 : state.effects.projectileSizeMultiplier;
+  const chargeMultiplier = 1 + state.effects.attackCharges;
+  const damage = Math.round(player.damage * getDamageMultiplier(state) * getCriticalMultiplier(state) * chargeMultiplier);
+  state.effects.attackCharges = 0;
+
   if (player.behavior === 'meteor') {
     const targetX = clamp(aim.x, 24, state.width - 24);
     const targetY = clamp(aim.y, 48, state.height - 40);
@@ -18,43 +50,54 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
     createProjectile(state, {
       pos: spawn,
       vel: { x: direction.x * player.projectileSpeed * 0.55, y: direction.y * player.projectileSpeed * 1.15 },
-      radius: player.projectileRadius,
-      damage: player.damage,
+      radius: player.projectileRadius * sizeMultiplier,
+      damage,
       color: '#a855f7',
       life: 1.8,
       owner: 'player',
       behavior: 'meteor',
-      pierce: 0,
+      pierce: state.effects.projectileDurability,
       hitIds: [],
       aoeRadius: player.explosionRadius,
       homingStrength: 0,
+      chargeBonus: chargeMultiplier - 1,
     });
     return;
   }
 
   const origin = { x: player.pos.x + player.facing * 14, y: player.pos.y - 8 };
   const direction = aimDirection(origin, aim);
-  const behavior = player.behavior;
 
   createProjectile(state, {
     pos: origin,
     vel: { x: direction.x * player.projectileSpeed, y: direction.y * player.projectileSpeed },
-    radius: player.projectileRadius,
-    damage: player.damage,
+    radius: player.projectileRadius * sizeMultiplier,
+    damage,
     color: player.color,
-    life: 1.6,
+    life: 1.8,
     owner: 'player',
-    behavior,
-    pierce: behavior === 'pierce' ? 999 : 0,
+    behavior: player.behavior,
+    pierce: (player.behavior === 'pierce' ? 999 : 0) + state.effects.projectileDurability,
     hitIds: [],
-    aoeRadius: player.explosionRadius,
+    aoeRadius: player.explosionRadius * state.effects.frictionRadiusMultiplier,
     homingStrength: player.homingStrength,
+    chargeBonus: chargeMultiplier - 1,
   });
 };
 
 export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
   const target = { x: state.player.pos.x, y: state.player.pos.y - 8 };
-  const direction = aimDirection(enemy.pos, target);
+  let direction = aimDirection(enemy.pos, target);
+
+  if (state.effects.enemyMissChance > 0 && Math.random() < state.effects.enemyMissChance) {
+    const angle = (Math.random() - 0.5) * 1.2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    direction = {
+      x: direction.x * cos - direction.y * sin,
+      y: direction.x * sin + direction.y * cos,
+    };
+  }
 
   createProjectile(state, {
     pos: { x: enemy.pos.x, y: enemy.pos.y },
