@@ -114,6 +114,8 @@ const rarityColor = (rarity: UpgradeRarity) => ({
   ascension: '#f59e0b',
 }[rarity]);
 
+const getActiveShopItem = (state: GameState) => state.shopItems.find((item) => item.owned && item.active) ?? null;
+
 const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: number, tick: number) => {
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, '#071227');
@@ -220,25 +222,212 @@ const drawSmokeAuraLayer = (
   ctx.restore();
 };
 
-const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
-  const aura = state.shopItems.find((item) => item.id === 'amberAura' && item.owned);
-  const shadow = state.shopItems.find((item) => item.id === 'shadowAura' && item.owned);
+const drawOverheatFlames = (ctx: CanvasRenderingContext2D, state: GameState, layer: 'back' | 'front') => {
+  if (state.effects.bodyDamage <= 0) return;
 
-  if (shadow) drawSmokeAuraLayer(ctx, state, ['rgba(15,15,20,0.5)', 'rgba(0,0,0,0.2)'], 1.12, 'back');
-  if (aura) drawSmokeAuraLayer(ctx, state, ['rgba(251,191,36,0.38)', 'rgba(249,115,22,0.14)'], 0.94, 'back');
+  const { player, tick } = state;
+  const isBack = layer === 'back';
+  const ringRadius = Math.max(player.width, player.height) * (isBack ? 0.8 : 0.68);
+  const centerY = player.pos.y + player.height * 0.04;
+  const flameCount = isBack ? 7 : 5;
 
-  drawMageSprite(ctx, state.player, state.tick);
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
 
-  if (state.effects.barrierReady) {
-    ctx.strokeStyle = 'rgba(147,197,253,0.8)';
-    ctx.lineWidth = 2;
+  const aura = ctx.createRadialGradient(
+    player.pos.x,
+    centerY,
+    ringRadius * 0.18,
+    player.pos.x,
+    centerY,
+    ringRadius * 1.28,
+  );
+  aura.addColorStop(0, isBack ? 'rgba(255,244,214,0.12)' : 'rgba(255,244,214,0.16)');
+  aura.addColorStop(0.28, isBack ? 'rgba(251,191,36,0.10)' : 'rgba(251,191,36,0.14)');
+  aura.addColorStop(0.6, isBack ? 'rgba(249,115,22,0.07)' : 'rgba(249,115,22,0.10)');
+  aura.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(player.pos.x, centerY, ringRadius * 1.28, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < flameCount; i += 1) {
+    const t = i / Math.max(1, flameCount - 1);
+    const side = (t - 0.5) * player.width * (isBack ? 0.7 : 0.58);
+    const sway = Math.sin(tick * 0.014 + i * 1.23) * (isBack ? 4.5 : 3.2);
+    const x = player.pos.x + side + sway;
+    const y = player.pos.y + player.height * 0.18 + Math.sin(tick * 0.02 + i * 0.9) * 2.5;
+    const width = (isBack ? 18 : 14) + Math.sin(tick * 0.01 + i) * 2;
+    const height = (isBack ? 44 : 34) + Math.cos(tick * 0.016 + i * 1.4) * 5;
+
+    const plume = ctx.createRadialGradient(x, y - height * 0.36, 0, x, y - height * 0.18, height * 0.95);
+    plume.addColorStop(0, isBack ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.24)');
+    plume.addColorStop(0.18, isBack ? 'rgba(254,240,138,0.16)' : 'rgba(254,240,138,0.22)');
+    plume.addColorStop(0.42, isBack ? 'rgba(251,191,36,0.12)' : 'rgba(251,191,36,0.18)');
+    plume.addColorStop(0.72, isBack ? 'rgba(249,115,22,0.07)' : 'rgba(249,115,22,0.12)');
+    plume.addColorStop(1, 'rgba(0,0,0,0)');
+
+    ctx.fillStyle = plume;
     ctx.beginPath();
-    ctx.arc(state.player.pos.x, state.player.pos.y - 4, state.player.width * 0.85, 0, Math.PI * 2);
+    ctx.ellipse(x, y - height * 0.22, width, height, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+};
+
+const drawBarrierVeil = (ctx: CanvasRenderingContext2D, state: GameState) => {
+  if (!state.effects.barrierReady) return;
+
+  const { player, tick } = state;
+  const sway = Math.sin(tick * 0.018) * 3;
+  const veilTop = player.pos.y - player.height * 0.72;
+  const veilBottom = player.pos.y + player.height * 0.5;
+  const veilWidth = player.width * 0.95;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  for (let i = 0; i < 3; i += 1) {
+    const offset = (i - 1) * 8;
+    const alpha = 0.12 - i * 0.022;
+    ctx.strokeStyle = `rgba(147,197,253,${alpha})`;
+    ctx.lineWidth = 12 - i * 2.5;
+    ctx.shadowColor = '#60a5fa';
+    ctx.shadowBlur = 16 - i * 3;
+    ctx.beginPath();
+    ctx.moveTo(player.pos.x - veilWidth + sway * 0.4, player.pos.y + offset);
+    ctx.bezierCurveTo(
+      player.pos.x - veilWidth * 0.72,
+      veilTop + offset,
+      player.pos.x + veilWidth * 0.1,
+      veilTop - 8 + offset,
+      player.pos.x + veilWidth * 0.62 + sway,
+      player.pos.y - player.height * 0.08 + offset,
+    );
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(player.pos.x + veilWidth - sway * 0.35, player.pos.y - 2 - offset * 0.5);
+    ctx.bezierCurveTo(
+      player.pos.x + veilWidth * 0.68,
+      veilBottom - 10 - offset,
+      player.pos.x - veilWidth * 0.12,
+      veilBottom + 6 - offset,
+      player.pos.x - veilWidth * 0.7 - sway,
+      player.pos.y + player.height * 0.18 - offset,
+    );
     ctx.stroke();
   }
 
-  if (shadow) drawSmokeAuraLayer(ctx, state, ['rgba(17,17,24,0.32)', 'rgba(0,0,0,0.1)'], 0.88, 'front');
-  if (aura) drawSmokeAuraLayer(ctx, state, ['rgba(251,191,36,0.24)', 'rgba(249,115,22,0.08)'], 0.8, 'front');
+  const mistCount = 6;
+  for (let i = 0; i < mistCount; i += 1) {
+    const phase = tick * 0.02 + i * 1.07;
+    const x = player.pos.x + Math.cos(phase) * (player.width * 0.52) + Math.sin(phase * 1.3) * 6;
+    const y = player.pos.y - player.height * 0.08 + Math.sin(phase * 0.9) * (player.height * 0.42);
+    const radiusX = 12 + (i % 3) * 4;
+    const radiusY = 20 + (i % 2) * 6;
+    const mist = ctx.createRadialGradient(x, y, 0, x, y, radiusY * 1.15);
+    mist.addColorStop(0, 'rgba(219,234,254,0.18)');
+    mist.addColorStop(0.36, 'rgba(96,165,250,0.12)');
+    mist.addColorStop(0.72, 'rgba(59,130,246,0.06)');
+    mist.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = mist;
+    ctx.beginPath();
+    ctx.ellipse(x, y, radiusX, radiusY, Math.sin(phase) * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+};
+
+
+const drawShopStaff = (
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  tip: 'u' | 'round' | 'triangle' | 'square',
+  color: string,
+) => {
+  const { player, tick } = state;
+  const handX = player.pos.x + player.width * 0.28 * player.facing;
+  const handY = player.pos.y - player.height * 0.06;
+  const tilt = (-0.16 * player.facing) + Math.sin(tick * 0.035) * 0.02;
+  const length = player.height * 0.68;
+  const gripOffset = player.height * 0.1;
+  const tipX = handX + Math.sin(tilt) * length;
+  const tipY = handY - Math.cos(tilt) * length;
+  const buttX = handX - Math.sin(tilt) * gripOffset;
+  const buttY = handY + Math.cos(tilt) * gripOffset;
+  const tipSize = Math.max(5, player.width * 0.16);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.lineCap = 'round';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+
+  ctx.strokeStyle = 'rgba(226,232,240,0.9)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(buttX, buttY);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2.2;
+
+  if (tip === 'u') {
+    ctx.beginPath();
+    ctx.moveTo(tipX - tipSize * 0.7, tipY + tipSize * 0.45);
+    ctx.lineTo(tipX - tipSize * 0.7, tipY - tipSize * 0.4);
+    ctx.arc(tipX, tipY - tipSize * 0.4, tipSize * 0.7, Math.PI, 0, false);
+    ctx.lineTo(tipX + tipSize * 0.7, tipY + tipSize * 0.45);
+    ctx.stroke();
+  } else if (tip === 'round') {
+    ctx.beginPath();
+    ctx.arc(tipX, tipY - tipSize * 0.2, tipSize * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (tip === 'triangle') {
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY - tipSize * 0.95);
+    ctx.lineTo(tipX - tipSize * 0.72, tipY + tipSize * 0.3);
+    ctx.lineTo(tipX + tipSize * 0.72, tipY + tipSize * 0.3);
+    ctx.closePath();
+    ctx.stroke();
+  } else if (tip === 'square') {
+    ctx.beginPath();
+    ctx.rect(tipX - tipSize * 0.56, tipY - tipSize * 0.82, tipSize * 1.12, tipSize * 1.12);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+};
+
+const drawOwnedShopStaves = (ctx: CanvasRenderingContext2D, state: GameState) => {
+  const active = getActiveShopItem(state);
+  if (!active) return;
+
+  const mapping = {
+    bulwarkStaff: { tip: 'u' as const, color: '#f59e0b' },
+    vaultStaff: { tip: 'round' as const, color: '#60a5fa' },
+    dealerStaff: { tip: 'triangle' as const, color: '#c084fc' },
+    scholarStaff: { tip: 'square' as const, color: '#86efac' },
+  };
+
+  const staff = mapping[active.id];
+  drawShopStaff(ctx, state, staff.tip, staff.color);
+};
+
+const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
+  if (state.effects.bodyDamage > 0) drawOverheatFlames(ctx, state, 'back');
+  drawOwnedShopStaves(ctx, state);
+
+  drawMageSprite(ctx, state.player, state.tick);
+
+  drawBarrierVeil(ctx, state);
+
+  if (state.effects.bodyDamage > 0) drawOverheatFlames(ctx, state, 'front');
 };
 
 const drawEnemies = (ctx: CanvasRenderingContext2D, state: GameState) => {
@@ -259,10 +448,19 @@ const drawStreamerBeam = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (!beam || beam.timer <= 0) return;
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  ctx.strokeStyle = 'rgba(147,197,253,0.92)';
-  ctx.lineWidth = 6;
-  ctx.shadowColor = '#93c5fd';
-  ctx.shadowBlur = 14;
+
+  ctx.strokeStyle = 'rgba(239,68,68,0.95)';
+  ctx.lineWidth = 5;
+  ctx.shadowColor = 'rgba(239,68,68,0.95)';
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.moveTo(beam.from.x, beam.from.y);
+  ctx.lineTo(beam.to.x, beam.to.y);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(254,202,202,0.9)';
+  ctx.lineWidth = 2;
+  ctx.shadowBlur = 0;
   ctx.beginPath();
   ctx.moveTo(beam.from.x, beam.from.y);
   ctx.lineTo(beam.to.x, beam.to.y);
@@ -275,31 +473,58 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
     const alpha = Math.max(0, strike.life / strike.maxLife);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.strokeStyle = `rgba(96,165,250,${0.95 * alpha})`;
-    ctx.lineWidth = 5;
-    ctx.shadowColor = '#93c5fd';
-    ctx.shadowBlur = 18;
-    ctx.beginPath();
-    const startY = 24;
-    let currentX = strike.x;
-    let currentY = startY;
-    ctx.moveTo(currentX, currentY);
-    const segments = 6;
+
+    const boltPoints = [strike.from];
+    let currentX = strike.from.x;
+    const segments = 7;
     for (let i = 0; i < segments; i += 1) {
       const t = (i + 1) / segments;
-      currentX += Math.sin(state.tick * 0.02 + i * 1.7 + strike.id) * 18;
-      currentY = startY + (strike.y - startY) * t;
-      ctx.lineTo(currentX, currentY);
+      const targetX = strike.from.x + (strike.to.x - strike.from.x) * t;
+      const targetY = strike.from.y + (strike.to.y - strike.from.y) * t;
+      currentX = targetX + Math.sin(state.tick * 0.026 + strike.id * 0.7 + i * 1.9) * (20 - i * 1.4);
+      boltPoints.push({ x: currentX, y: targetY });
     }
+    boltPoints[boltPoints.length - 1] = strike.to;
+
+    ctx.strokeStyle = `rgba(224,242,254,${0.98 * alpha})`;
+    ctx.lineWidth = 7;
+    ctx.shadowColor = '#93c5fd';
+    ctx.shadowBlur = 24;
+    ctx.beginPath();
+    ctx.moveTo(boltPoints[0].x, boltPoints[0].y);
+    for (const point of boltPoints.slice(1)) ctx.lineTo(point.x, point.y);
     ctx.stroke();
 
-    const flash = ctx.createRadialGradient(strike.x, strike.y, 0, strike.x, strike.y, 54);
-    flash.addColorStop(0, `rgba(147,197,253,${0.38 * alpha})`);
-    flash.addColorStop(0.45, `rgba(96,165,250,${0.16 * alpha})`);
+    ctx.strokeStyle = `rgba(96,165,250,${0.9 * alpha})`;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(boltPoints[0].x, boltPoints[0].y);
+    for (const point of boltPoints.slice(1)) ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+
+    for (let i = 1; i < boltPoints.length - 1; i += 2) {
+      const branchFrom = boltPoints[i];
+      const side = i % 4 === 1 ? -1 : 1;
+      const branchTo = {
+        x: branchFrom.x + side * (10 + i * 1.5),
+        y: branchFrom.y + 14,
+      };
+      ctx.strokeStyle = `rgba(147,197,253,${0.55 * alpha})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(branchFrom.x, branchFrom.y);
+      ctx.lineTo(branchTo.x, branchTo.y);
+      ctx.stroke();
+    }
+
+    const flash = ctx.createRadialGradient(strike.to.x, strike.to.y, 0, strike.to.x, strike.to.y, 62);
+    flash.addColorStop(0, `rgba(255,255,255,${0.5 * alpha})`);
+    flash.addColorStop(0.18, `rgba(147,197,253,${0.38 * alpha})`);
+    flash.addColorStop(0.52, `rgba(96,165,250,${0.2 * alpha})`);
     flash.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(strike.x, strike.y, 54, 0, Math.PI * 2);
+    ctx.arc(strike.to.x, strike.to.y, 62, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -703,62 +928,69 @@ const drawBetweenWave = (ctx: CanvasRenderingContext2D, state: GameState) => {
 
   const rerollRect = { x: state.width / 2 - 126, y: startY + contentHeight + 24, w: 252, h: 40 };
   state.ui.rerollRect = rerollRect;
-  const rerollEnabled = state.effects.freeRerollAvailable || state.souls >= UPGRADE_REROLL_COST;
+  const rerollFree = Boolean(getActiveShopItem(state)?.id === 'dealerStaff') || state.effects.freeRerollAvailable;
+  const rerollEnabled = rerollFree || state.souls >= UPGRADE_REROLL_COST;
   fillPanel(ctx, rerollRect, rerollEnabled ? 'rgba(30,41,59,0.92)' : 'rgba(30,41,59,0.55)', rerollEnabled ? '#93c5fd' : 'rgba(100,116,139,0.7)');
   ctx.textAlign = 'center';
   ctx.fillStyle = rerollEnabled ? '#e0f2fe' : '#94a3b8';
   ctx.font = '17px Arial';
-  const rerollLabel = state.effects.freeRerollAvailable ? 'Refresh upgrades · Free' : `Refresh upgrades · ${UPGRADE_REROLL_COST} souls`;
+  const rerollLabel = rerollFree ? 'Refresh upgrades · Free' : `Refresh upgrades · ${UPGRADE_REROLL_COST} souls`;
   drawCenteredLabel(ctx, rerollLabel, rerollRect, '17px Arial', rerollEnabled ? '#e0f2fe' : '#94a3b8');
 };
 
 const drawShopScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   state.ui.shopCards = [];
-  state.ui.menuRect = { x: state.width / 2 - 122, y: 538, w: 244, h: 58 };
+  state.ui.menuRect = { x: state.width / 2 - 122, y: 624, w: 244, h: 52 };
   state.ui.restartRect = null;
 
   ctx.fillStyle = 'rgba(2,6,23,0.82)';
   ctx.fillRect(0, 0, state.width, state.height);
 
-  const panel = { x: state.width / 2 - 430, y: 72, w: 860, h: 544 };
+  const panel = { x: state.width / 2 - 430, y: 28, w: 860, h: 664 };
   fillPanel(ctx, panel, 'rgba(3,7,18,0.96)', 'rgba(148,163,184,0.45)');
 
-  const headerBand = { x: panel.x + 26, y: panel.y + 24, w: panel.w - 52, h: 96 };
+  const headerBand = { x: panel.x + 26, y: panel.y + 20, w: panel.w - 52, h: 92 };
   fillPanel(ctx, headerBand, 'rgba(15,23,42,0.5)', 'rgba(148,163,184,0.2)');
 
   ctx.fillStyle = '#f8fafc';
-  ctx.font = '40px Arial';
+  ctx.font = '38px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('Soul Shop', state.width / 2, panel.y + 54);
+  ctx.fillText('Soul Shop', state.width / 2, panel.y + 50);
   ctx.font = '18px Arial';
   ctx.fillStyle = '#cbd5e1';
-  ctx.fillText(`Souls available: ${state.souls}`, state.width / 2, panel.y + 92);
+  ctx.fillText(`Souls available: ${state.souls}`, state.width / 2, panel.y + 86);
 
-  ctx.textAlign = 'center';
   ctx.fillStyle = '#f8fafc';
   ctx.font = '24px Arial';
-  ctx.fillText('Permanent purchases', state.width / 2, panel.y + 154);
+  ctx.fillText('Permanent purchases', state.width / 2, panel.y + 146);
   ctx.fillStyle = '#94a3b8';
   ctx.font = '15px Arial';
-  ctx.fillText('Purchased auras carry into every new run.', state.width / 2, panel.y + 182);
+  ctx.fillText('Purchased staves carry into every new run.', state.width / 2, panel.y + 172);
 
   state.shopItems.forEach((item, index) => {
-    const rect = { x: panel.x + 50, y: panel.y + 214 + index * 116, w: panel.w - 100, h: 92 };
+    const rect = { x: panel.x + 50, y: panel.y + 196 + index * 102, w: panel.w - 100, h: 82 };
     state.ui.shopCards.push({ id: item.id, rect });
-    const fill = item.owned ? 'rgba(16,44,31,0.9)' : 'rgba(15,23,42,0.95)';
-    fillPanel(ctx, rect, fill, item.color === '#111111' ? '#94a3b8' : item.color);
+    const fill = item.active ? 'rgba(22,58,45,0.94)' : item.owned ? 'rgba(25,45,68,0.92)' : 'rgba(15,23,42,0.95)';
+    const stroke = item.active ? '#f8fafc' : item.color;
+    fillPanel(ctx, rect, fill, stroke);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 21px Arial';
-    ctx.fillText(`${item.name} · ${item.cost} souls`, rect.x + rect.w / 2, rect.y + 32);
-    ctx.fillStyle = item.owned ? '#86efac' : '#cbd5e1';
-    ctx.font = '15px Arial';
-    wrapTextCentered(ctx, item.owned ? 'Owned — active on every new run.' : item.description, rect.x + rect.w / 2, rect.y + 60, rect.w - 52, 19);
+    ctx.fillStyle = item.active ? '#f8fafc' : '#e2e8f0';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText(`${item.name} · ${item.cost} souls`, rect.x + rect.w / 2, rect.y + 28);
+    ctx.fillStyle = item.active ? '#bbf7d0' : item.owned ? '#bfdbfe' : '#cbd5e1';
+    ctx.font = '14px Arial';
+    const statusText = item.active
+      ? 'Equipped — only one staff effect can be active.'
+      : item.owned
+        ? 'Owned — click to equip this staff.'
+        : item.description;
+    wrapTextCentered(ctx, statusText, rect.x + rect.w / 2, rect.y + 51, rect.w - 52, 17);
   });
 
   fillPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd');
   drawCenteredLabel(ctx, 'Back', state.ui.menuRect, '22px Arial');
 };
+
 
 const drawDeathScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   state.ui.shopCards = [];
@@ -788,6 +1020,33 @@ const drawDeathScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   drawCenteredLabel(ctx, 'Character Select', state.ui.menuRect, '22px Arial');
 };
 
+const drawPauseScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
+  state.ui.shopCards = [];
+  state.ui.restartRect = { x: state.width / 2 - 258, y: 356, w: 236, h: 60 };
+  state.ui.menuRect = { x: state.width / 2 + 22, y: 356, w: 236, h: 60 };
+
+  ctx.fillStyle = 'rgba(2,6,23,0.58)';
+  ctx.fillRect(0, 0, state.width, state.height);
+
+  const panel = { x: state.width / 2 - 360, y: 160, w: 720, h: 320 };
+  fillPanel(ctx, panel, 'rgba(3,7,18,0.94)', 'rgba(148,163,184,0.42)');
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '42px Arial';
+  ctx.fillText('Paused', state.width / 2, panel.y + 62);
+  ctx.font = '18px Arial';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillText('Return to the game or give up this run and go back to the main menu.', state.width / 2, panel.y + 118);
+  ctx.fillText('Press ESC to continue.', state.width / 2, panel.y + 148);
+
+  fillPanel(ctx, state.ui.restartRect, 'rgba(91,33,182,0.92)', '#c4b5fd');
+  fillPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd');
+
+  drawCenteredLabel(ctx, 'Return to Game', state.ui.restartRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Give Up', state.ui.menuRect, '22px Arial');
+};
+
 export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState) => {
   state.ui.mageCards = [];
   state.ui.upgradeCards = [];
@@ -809,11 +1068,13 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState) => {
   drawEnemies(ctx, state);
   drawWillOWispOrbs(ctx, state);
   drawPlayer(ctx, state);
+  drawStreamerBeam(ctx, state);
   drawTexts(ctx, state);
   drawHud(ctx, state);
 
   if (state.status === 'menu') drawMenu(ctx, state);
   if (state.status === 'between') drawBetweenWave(ctx, state);
   if (state.status === 'shop') drawShopScreen(ctx, state);
+  if (state.status === 'paused') drawPauseScreen(ctx, state);
   if (state.status === 'death') drawDeathScreen(ctx, state);
 };

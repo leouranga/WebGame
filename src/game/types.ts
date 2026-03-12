@@ -27,11 +27,12 @@ export type SpellBehavior =
   | 'fragment'
   | 'friction'
   | 'blackhole'
-  | 'wisp';
+  | 'wisp'
+  | 'thunder';
 
 export type EnemyKind = 'wisp' | 'crusher' | 'spitter' | 'oracle';
 
-export type GameStatus = 'menu' | 'playing' | 'between' | 'death' | 'shop';
+export type GameStatus = 'menu' | 'playing' | 'paused' | 'between' | 'death' | 'shop';
 
 export type UpgradeRarity = 'common' | 'uncommon' | 'epic' | 'ascension';
 
@@ -92,6 +93,7 @@ export type Player = {
 export type Projectile = {
   id: number;
   pos: Vec;
+  lineFrom?: Vec;
   vel: Vec;
   radius: number;
   damage: number;
@@ -103,6 +105,8 @@ export type Projectile = {
   hitIds: number[];
   aoeRadius: number;
   homingStrength: number;
+  projectileHp?: number;
+  projectileMaxHp?: number;
   fromUpgrade?: string;
   chargeBonus?: number;
 };
@@ -133,7 +137,10 @@ export type Enemy = {
   hitFlash: number;
   slow: number;
   bleed: number;
+  bleedStacks: number;
+  bleedTickTimer: number;
   bodyHitCooldown: number;
+  deathHandled: boolean;
 };
 
 export type OrbKind = 'soul' | 'heal';
@@ -158,10 +165,25 @@ export type FloatingText = {
 
 export type LightningStrike = {
   id: number;
-  x: number;
-  y: number;
+  from: Vec;
+  to: Vec;
   life: number;
   maxLife: number;
+};
+
+export type QueuedFrictionShot = {
+  delay: number;
+  behindDirection: 1 | -1;
+  horizontalCarry: number;
+};
+
+export type QueuedWispShot = {
+  delay: number;
+  origin: Vec;
+  target: Vec;
+  speed: number;
+  damage: number;
+  color: string;
 };
 
 export type ImpactEffect = {
@@ -187,7 +209,7 @@ export type UpgradeCard = {
   threshold?: number;
 };
 
-export type ShopItemId = 'amberAura' | 'shadowAura';
+export type ShopItemId = 'bulwarkStaff' | 'vaultStaff' | 'dealerStaff' | 'scholarStaff';
 
 export type ShopItem = {
   id: ShopItemId;
@@ -196,6 +218,7 @@ export type ShopItem = {
   color: string;
   cost: number;
   owned: boolean;
+  active: boolean;
 };
 
 export type WaveState = {
@@ -312,6 +335,8 @@ export type GameState = {
   texts: FloatingText[];
   thunderStrikes: LightningStrike[];
   impacts: ImpactEffect[];
+  queuedFrictionShots: QueuedFrictionShot[];
+  queuedWispShots: QueuedWispShot[];
   wave: WaveState;
   fireTimer: number;
   souls: number;

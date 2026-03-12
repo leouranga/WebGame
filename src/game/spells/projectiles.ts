@@ -1,12 +1,21 @@
-import { clamp } from '@/game/terrain';
+import { getMageDefinition } from '@/game/characters/mages';
+import { clamp, getGroundY } from '@/game/terrain';
 import { normalize } from '@/game/utils';
 import type { Enemy, GameState, Projectile, Vec } from '@/game/types';
 
 export const createProjectile = (state: GameState, projectile: Omit<Projectile, 'id'>) => {
-  state.projectiles.push({ id: state.nextId++, ...projectile });
+  const projectileHp = Math.max(1, Math.round(projectile.projectileHp ?? 1));
+  state.projectiles.push({
+    id: state.nextId++,
+    ...projectile,
+    projectileHp,
+    projectileMaxHp: Math.max(projectileHp, Math.round(projectile.projectileMaxHp ?? projectileHp)),
+  });
 };
 
 const aimDirection = (from: Vec, to: Vec) => normalize({ x: to.x - from.x, y: to.y - from.y });
+
+const getEnemyProjectileHp = (enemy: Enemy) => Math.max(1, Math.ceil(enemy.damage / 3));
 
 const getDamageMultiplier = (state: GameState) => {
   let multiplier = 1;
@@ -39,8 +48,51 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
   const player = state.player;
   const sizeMultiplier = state.effects.whiteDwarf ? 1 : state.effects.projectileSizeMultiplier;
   const chargeMultiplier = 1 + state.effects.attackCharges;
-  const damage = Math.round(player.damage * getDamageMultiplier(state) * getCriticalMultiplier(state) * chargeMultiplier);
+  const damageMultiplier = getDamageMultiplier(state) * getCriticalMultiplier(state) * chargeMultiplier;
+  const damage = Math.round(player.damage * damageMultiplier);
   state.effects.attackCharges = 0;
+
+  if (player.behavior === 'thunder') {
+    const baseMageDamage = getMageDefinition(player.mageId).damage;
+    const thunderDamage = Math.round((50 + Math.max(0, player.damage - baseMageDamage)) * damageMultiplier * state.effects.thunderboltDamageMultiplier);
+    const targetX = clamp(aim.x, 24, state.width - 24);
+    const target = {
+      x: targetX,
+      y: clamp(getGroundY(state.terrain, targetX) - 18, 56, state.height - 26),
+    };
+    const lineFrom = {
+      x: target.x + (Math.random() * 36 - 18),
+      y: 20,
+    };
+
+    state.thunderStrikes.push({
+      id: state.nextId++,
+      from: lineFrom,
+      to: target,
+      life: 0.28,
+      maxLife: 0.28,
+    });
+
+    createProjectile(state, {
+      pos: target,
+      lineFrom,
+      vel: { x: 0, y: 0 },
+      radius: 2,
+      damage: Math.max(1, thunderDamage),
+      color: '#93c5fd',
+      life: 0.02,
+      owner: 'player',
+      behavior: 'thunder',
+      pierce: 1,
+      hitIds: [],
+      aoeRadius: Math.max(42, player.explosionRadius || 0),
+      homingStrength: 0,
+      chargeBonus: chargeMultiplier - 1,
+      projectileHp: 1 + state.effects.projectileDurability,
+      projectileMaxHp: 1 + state.effects.projectileDurability,
+    });
+    return;
+  }
 
   if (player.behavior === 'meteor') {
     const targetX = clamp(aim.x, 24, state.width - 24);
@@ -53,7 +105,7 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
       radius: player.projectileRadius * sizeMultiplier,
       damage,
       color: '#a855f7',
-      life: 1.8,
+      life: 2.75,
       owner: 'player',
       behavior: 'meteor',
       pierce: state.effects.projectileDurability,
@@ -61,6 +113,8 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
       aoeRadius: player.explosionRadius,
       homingStrength: 0,
       chargeBonus: chargeMultiplier - 1,
+      projectileHp: 1 + state.effects.projectileDurability,
+      projectileMaxHp: 1 + state.effects.projectileDurability,
     });
     return;
   }
@@ -74,7 +128,7 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
     radius: player.projectileRadius * sizeMultiplier,
     damage,
     color: player.color,
-    life: 1.8,
+    life: 2.75,
     owner: 'player',
     behavior: player.behavior,
     pierce: (player.behavior === 'pierce' ? 999 : 0) + state.effects.projectileDurability,
@@ -82,6 +136,8 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
     aoeRadius: player.explosionRadius * state.effects.frictionRadiusMultiplier,
     homingStrength: player.homingStrength,
     chargeBonus: chargeMultiplier - 1,
+    projectileHp: 1 + state.effects.projectileDurability,
+    projectileMaxHp: 1 + state.effects.projectileDurability,
   });
 };
 
@@ -99,6 +155,7 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
     };
   }
 
+  const projectileHp = getEnemyProjectileHp(enemy);
   createProjectile(state, {
     pos: { x: enemy.pos.x, y: enemy.pos.y },
     vel: { x: direction.x * enemy.projectileSpeed, y: direction.y * enemy.projectileSpeed },
@@ -112,5 +169,7 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
     hitIds: [],
     aoeRadius: 0,
     homingStrength: 0,
+    projectileHp,
+    projectileMaxHp: projectileHp,
   });
 };

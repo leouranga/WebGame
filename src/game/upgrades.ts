@@ -28,7 +28,7 @@ export const UNCOMMON_UPGRADES: UpgradeCard[] = [
   card('charge', 'Charge', 'Projectile Size +20%', 'uncommon', '⬤', '#86efac'),
   card('cloak', 'Cloak', 'Invulnerability after taking damage +10% duration', 'uncommon', '🛡', '#86efac'),
   card('fragmentation', 'Fragmentation', 'Killed enemies release 3 small projectiles. Each stack adds +1 projectile and +1 damage.', 'uncommon', '✹', '#86efac'),
-  card('friction', 'Friction', 'Running launches 1 explosive projectile upward', 'uncommon', '⇡', '#86efac'),
+  card('friction', 'Friction', 'Running launches 1 explosive projectile upward more often', 'uncommon', '⇡', '#86efac'),
   card('growthPlus', 'Growth+', 'Max HP +20', 'uncommon', '❤', '#86efac'),
   card('gush', 'Gush', 'Adds +1 Jump', 'uncommon', '⤊', '#86efac'),
   card('leech', 'Leech', 'Life Steal of 3% Damage', 'uncommon', '🜏', '#86efac'),
@@ -40,7 +40,7 @@ export const UNCOMMON_UPGRADES: UpgradeCard[] = [
   card('resonancePlus', 'Resonance+', 'Attack Speed +24%', 'uncommon', '≫', '#86efac'),
   card('shrink', 'Shrink', 'Makes you 10% smaller', 'uncommon', '◔', '#86efac'),
   card('swiftPlus', 'Swift+', 'Movement Speed +40%', 'uncommon', '➠', '#86efac'),
-  card('thunderbolt', 'Thunderbolt', 'Calls 2 thunderbolts from the sky every few seconds', 'uncommon', '⚡', '#86efac'),
+  card('thunderbolt', 'Thunderbolt', 'Calls 2 thunderbolts from the sky every few seconds for 50 base damage', 'uncommon', '⚡', '#86efac'),
 ];
 
 export const EPIC_UPGRADES: UpgradeCard[] = [
@@ -48,13 +48,13 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card('barrier', 'Barrier', 'Creates a shield that blocks damage once every few seconds', 'epic', '⬡', '#c084fc'),
   card('cold', 'Cold', 'Enemies get 1% slower every time they take damage', 'epic', '❄', '#c084fc'),
   card('fragmentationPlus', 'Fragmentation+', 'Fragmentation gains +3 projectiles and +3 damage', 'epic', '✹', '#c084fc'),
-  card('frictionPlus', 'Friction+', 'Running launches 3 explosive projectiles upward', 'epic', '⇈', '#c084fc'),
+  card('frictionPlus', 'Friction+', 'Running launches 1 explosive projectile upward much more often', 'epic', '⇈', '#c084fc'),
   card('focus', 'Focus', 'Gain attack speed every second you do not move', 'epic', '◈', '#c084fc'),
   card('growthPlusPlus', 'Growth++', 'Max HP +40', 'epic', '♥', '#c084fc'),
   card('immortal', 'Immortal', '+1 Revive. Kill all enemies when reviving.', 'epic', '☥', '#c084fc', { maxStacks: 1 }),
   card('leechPlus', 'Leech+', 'Life Steal of 9% Damage', 'epic', '🜏', '#c084fc'),
   card('overheat', 'Overheat', 'Your body deals 40 damage on contact', 'epic', '☄', '#c084fc'),
-  card('thunderboltPlus', 'Thunderbolt+', 'Calls 6 thunderbolts from the sky every few seconds', 'epic', '⚡', '#c084fc'),
+  card('thunderboltPlus', 'Thunderbolt+', 'Calls 6 thunderbolts from the sky every few seconds for 50 base damage', 'epic', '⚡', '#c084fc'),
   card('tome', 'Tome', 'New common items are 35% more effective', 'epic', '📘', '#c084fc'),
   card('willOWisp', 'Will-O-Wisp', 'Summons a wisp with half your attack damage and speed', 'epic', '✧', '#c084fc'),
   card('wound', 'Wound', 'Dealing damage applies bleeding to the enemy', 'epic', '🩸', '#c084fc'),
@@ -65,7 +65,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card('antiAircraft', 'Anti-Aircraft', 'Larger explosion area of friction projectiles', 'ascension', '✸', '#f59e0b', { sourceId: 'friction', threshold: 10 }),
   card('avenger', 'Avenger', 'Lethal damage instead kills half the enemies and heals half HP', 'ascension', '⚔', '#f59e0b', { sourceId: 'rage', threshold: 5 }),
   card('blessed', 'Blessed', '5% chance of finding epic items', 'ascension', '✟', '#f59e0b', { sourceId: 'luck', threshold: 5 }),
-  card('bloodyMage', 'Bloody Mage', 'Bleeding deals damage faster', 'ascension', '🩸', '#f59e0b', { sourceId: 'wound', threshold: 3 }),
+  card('bloodyMage', 'Bloody Mage', 'Bleeding ticks twice as fast', 'ascension', '🩸', '#f59e0b', { sourceId: 'wound', threshold: 3 }),
   card('bulldozer', 'Bulldozer', 'Pushing enemies away with your body gets easier', 'ascension', '⬌', '#f59e0b', { sourceId: 'swift', threshold: 8 }),
   card('bunker', 'Bunker', 'Standing still grants armor every second up to 95', 'ascension', '▤', '#f59e0b', { sourceId: 'focus', threshold: 3 }),
   card('burningMan', 'Burning Man', 'Body damage pulses every 2 seconds around you', 'ascension', '🔥', '#f59e0b', { sourceId: 'overheat', threshold: 3 }),
@@ -107,6 +107,73 @@ export const createEmptyUpgradeCounts = (): Record<string, number> => ({});
 
 export const isUpgradeId = (value: string): value is UpgradeId => ALL_UPGRADES.some((upgrade) => upgrade.id === value);
 
+const hasActiveShopItem = (state: GameState, itemId: string) => state.shopItems.some((item) => item.id === itemId && item.owned && item.active);
+
+const UPGRADE_FAMILIES: Record<string, UpgradeId[]> = {
+  appraisal: ['appraisal'],
+  barrier: ['barrier'],
+  catalyst: ['catalyst', 'catalystPlus'],
+  charge: ['charge'],
+  cloak: ['cloak'],
+  cold: ['cold'],
+  eyesight: ['eyesight'],
+  focus: ['focus'],
+  fragmentation: ['fragmentation', 'fragmentationPlus'],
+  friction: ['friction', 'frictionPlus'],
+  growth: ['growth', 'growthPlus', 'growthPlusPlus'],
+  gush: ['gush'],
+  impulse: ['impulse'],
+  leech: ['leech', 'leechPlus'],
+  luck: ['luck'],
+  orb: ['orb'],
+  overheat: ['overheat'],
+  precision: ['precision'],
+  rage: ['rage'],
+  regrowth: ['regrowth'],
+  renew: ['renew'],
+  resonance: ['resonance', 'resonancePlus'],
+  resist: ['resist'],
+  shrink: ['shrink'],
+  souls: ['souls'],
+  stability: ['stability'],
+  swift: ['swift', 'swiftPlus'],
+  thunderbolt: ['thunderbolt', 'thunderboltPlus'],
+  tome: ['tome'],
+  willOWisp: ['willOWisp'],
+  wound: ['wound'],
+};
+
+const getUpgradeFamily = (sourceId?: UpgradeId): UpgradeId[] => {
+  if (!sourceId) return [];
+  return UPGRADE_FAMILIES[sourceId] ?? [sourceId];
+};
+
+const getUpgradeFamilyCards = (sourceId?: UpgradeId) => getUpgradeFamily(sourceId)
+  .map((id) => ALL_UPGRADES.find((upgrade) => upgrade.id === id))
+  .filter((upgrade): upgrade is UpgradeCard => Boolean(upgrade));
+
+const hasCommonOrUncommonVariant = (cards: UpgradeCard[]) => cards.some((upgrade) => upgrade.rarity === 'common' || upgrade.rarity === 'uncommon');
+
+const getUpgradePointValue = (upgrade: UpgradeCard, familyCards: UpgradeCard[]) => {
+  if (upgrade.rarity === 'common') return 1;
+  if (upgrade.rarity === 'uncommon') return 2;
+  if (upgrade.rarity === 'epic') return hasCommonOrUncommonVariant(familyCards) ? 3 : 1;
+  return 1;
+};
+
+const getAscensionThreshold = (sourceId?: UpgradeId) => {
+  const family = getUpgradeFamilyCards(sourceId);
+  if (family.length === 0) return Number.POSITIVE_INFINITY;
+  return hasCommonOrUncommonVariant(family) ? 10 : 4;
+};
+
+export const getAscensionStackCount = (state: GameState, sourceId?: UpgradeId) => {
+  const family = getUpgradeFamilyCards(sourceId);
+  return family.reduce((total, upgrade) => total + (state.upgradeCounts[upgrade.id] ?? 0) * getUpgradePointValue(upgrade, family), 0);
+};
+
+export const getUpgradeProgressCount = getAscensionStackCount;
+
 const getRarityWeights = (state: GameState) => {
   const common = 0.72;
   const uncommon = 0.23 + state.effects.uncommonChanceBonus;
@@ -131,25 +198,49 @@ const pickByRarity = (state: GameState, excluded: Set<string>, rarity: UpgradeRa
   return available[Math.floor(Math.random() * available.length)];
 };
 
-const rollRarity = (state: GameState): UpgradeRarity => {
+const EPIC_WAVE_INTERVAL = 5;
+
+const isGuaranteedEpicWave = (waveNumber: number) => waveNumber === 1 || waveNumber % EPIC_WAVE_INTERVAL === 0;
+
+const canOfferEpicUpgrades = (state: GameState) => isGuaranteedEpicWave(state.wave.number) || state.effects.epicChanceBonus > 0;
+
+const rollRarity = (state: GameState, allowEpic: boolean): UpgradeRarity => {
   const weights = getRarityWeights(state);
   const roll = Math.random();
-  if (roll < weights.epic) return 'epic';
-  if (roll < weights.epic + weights.uncommon) return 'uncommon';
-  return 'common';
+
+  if (allowEpic) {
+    if (roll < weights.epic) return 'epic';
+    if (roll < weights.epic + weights.uncommon) return 'uncommon';
+    return 'common';
+  }
+
+  const uncommonWeight = weights.common + weights.uncommon > 0
+    ? weights.uncommon / (weights.common + weights.uncommon)
+    : 0;
+
+  return roll < uncommonWeight ? 'uncommon' : 'common';
 };
 
 export const pickUpgradeCards = (state: GameState): UpgradeCard[] => {
   const excluded = new Set<string>();
   const picks: UpgradeCard[] = [];
   const target = Math.max(4, 4 + state.effects.appraisalChoices);
+  const guaranteedEpicWave = isGuaranteedEpicWave(state.wave.number);
+  const allowEpicRolls = canOfferEpicUpgrades(state);
+  const uncommonOnly = hasActiveShopItem(state, 'scholarStaff');
 
   while (picks.length < target && excluded.size < COMMON_UPGRADES.length + UNCOMMON_UPGRADES.length + EPIC_UPGRADES.length) {
-    const rarity = rollRarity(state);
-    const picked = pickByRarity(state, excluded, rarity)
-      ?? pickByRarity(state, excluded, 'common')
-      ?? pickByRarity(state, excluded, 'uncommon')
-      ?? pickByRarity(state, excluded, 'epic');
+    const picked = uncommonOnly
+      ? pickByRarity(state, excluded, 'uncommon')
+      : guaranteedEpicWave
+        ? pickByRarity(state, excluded, 'epic')
+        : (() => {
+            const rarity = rollRarity(state, allowEpicRolls);
+            return pickByRarity(state, excluded, rarity)
+              ?? pickByRarity(state, excluded, 'common')
+              ?? pickByRarity(state, excluded, 'uncommon')
+              ?? (allowEpicRolls ? pickByRarity(state, excluded, 'epic') : null);
+          })();
 
     if (!picked) break;
     excluded.add(picked.id);
@@ -160,13 +251,20 @@ export const pickUpgradeCards = (state: GameState): UpgradeCard[] => {
 };
 
 export const getOwnedDisplayCards = (state: GameState): Array<{ card: UpgradeCard; count: number }> => {
-  const entries = ALL_UPGRADES.filter((entry) => {
-    if (entry.rarity === 'ascension') return state.ascensions.some((asc) => asc.id === entry.id);
-    return (state.upgradeCounts[entry.id] ?? 0) > 0;
-  }).map((entry) => ({
-    card: entry,
-    count: entry.rarity === 'ascension' ? 1 : (state.upgradeCounts[entry.id] ?? 0),
-  }));
+  const entries: Array<{ card: UpgradeCard; count: number }> = [];
+  const familyKeys = Object.keys(UPGRADE_FAMILIES) as UpgradeId[];
+
+  familyKeys.forEach((familyKey) => {
+    const family = getUpgradeFamilyCards(familyKey);
+    const count = family.reduce((total, upgrade) => total + (state.upgradeCounts[upgrade.id] ?? 0) * getUpgradePointValue(upgrade, family), 0);
+    if (count <= 0) return;
+    const representative = getUpgradeCard(familyKey);
+    entries.push({ card: representative, count });
+  });
+
+  state.ascensions.forEach((ascension) => {
+    entries.push({ card: ascension, count: 1 });
+  });
 
   const rarityOrder: Record<UpgradeRarity, number> = { common: 0, uncommon: 1, epic: 2, ascension: 3 };
   entries.sort((a, b) => {
@@ -179,6 +277,6 @@ export const getOwnedDisplayCards = (state: GameState): Array<{ card: UpgradeCar
 
 export const findUnlockedAscensions = (state: GameState): UpgradeCard[] => ASCENSIONS.filter((ascension) => {
   if (state.ascensions.some((entry) => entry.id === ascension.id)) return false;
-  const sourceCount = state.upgradeCounts[ascension.sourceId ?? ''] ?? 0;
-  return sourceCount >= (ascension.threshold ?? Number.POSITIVE_INFINITY);
+  const sourceCount = getAscensionStackCount(state, ascension.sourceId);
+  return sourceCount >= getAscensionThreshold(ascension.sourceId);
 });

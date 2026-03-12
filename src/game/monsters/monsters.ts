@@ -120,6 +120,9 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     hitFlash: 0,
     slow: 0,
     bleed: 0,
+    bleedStacks: 0,
+    bleedTickTimer: 1,
     bodyHitCooldown: 0,
+    deathHandled: false,
   };
 };

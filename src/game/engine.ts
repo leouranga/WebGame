@@ -14,14 +14,17 @@ import type {
   RunEffects,
   ShopItemId,
   SoulOrb,
+  QueuedFrictionShot,
+  QueuedWispShot,
   UpgradeCard,
   UpgradeId,
   Vec,
 } from '@/game/types';
-import { COMMON_UPGRADES, findUnlockedAscensions, getUpgradeCard, pickUpgradeCards } from '@/game/upgrades';
+import { COMMON_UPGRADES, findUnlockedAscensions, getUpgradeCard, getUpgradeProgressCount, pickUpgradeCards } from '@/game/upgrades';
 import { distance, normalize, pointInRect, rectsOverlap } from '@/game/utils';
 
 const addText = (state: GameState, value: string, pos: Vec, color: string) => {
+  if (/[A-Za-z]/.test(value)) return;
   const text: FloatingText = {
     id: state.nextId++,
     pos: { ...pos },
@@ -42,6 +45,13 @@ const addImpact = (state: GameState, pos: Vec, radius: number, color: string, li
     maxLife: life,
   });
 };
+
+const getThunderboltBaseDamage = (state: GameState) => {
+  const baseMageDamage = getMageDefinition(state.player.mageId).damage;
+  return 50 + Math.max(0, state.player.damage - baseMageDamage);
+};
+
+const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThunderboltBaseDamage(state) * state.effects.thunderboltDamageMultiplier));
 
 const createEffects = (): RunEffects => ({
   critChance: 0,
@@ -123,6 +133,8 @@ const createEffects = (): RunEffects => ({
 
 const hasAscension = (state: GameState, id: string) => state.ascensions.some((entry) => entry.id === id);
 
+const hasActiveShopItem = (state: GameState, itemId: ShopItemId) => state.shopItems.some((item) => item.id === itemId && item.owned && item.active);
+
 const createOrb = (state: GameState, pos: Vec, amount: number, kind: 'soul' | 'heal') => {
   const orb: SoulOrb = {
     id: state.nextId++,
@@ -154,6 +166,16 @@ const syncPlayerSize = (state: GameState, scale: number) => {
     player.pos.y = getGroundY(state.terrain, player.pos.x) - player.height / 2;
   }
 };
+const growPlayerFromHealthUpgrade = (state: GameState, amount = 0.05) => {
+  const currentScale = state.player.width / state.player.baseWidth;
+  syncPlayerSize(state, Math.min(2.8, currentScale + amount));
+};
+
+const applyMaxHealthUpgrade = (state: GameState, maxHpGain: number, healGain = maxHpGain) => {
+  state.player.maxHp += maxHpGain;
+  state.player.hp = Math.min(state.player.maxHp, state.player.hp + healGain);
+};
+
 
 const getCurrentDefenseMultiplier = (state: GameState) => {
   const bunker = state.effects.bunkerArmor > 0 ? 1 - Math.min(0.95, state.effects.bunkerArmor / 100) : 1;
@@ -193,6 +215,11 @@ const distanceToSegment = (point: Vec, a: Vec, b: Vec) => {
 };
 
 const getCurrentFireInterval = (state: GameState) => Math.max(0.06, state.player.fireInterval / (1 + state.effects.focusBonus));
+const getAttackSpeedFactor = (state: GameState) => {
+  const baseInterval = getMageDefinition(state.player.mageId).fireInterval || state.player.fireInterval || 1;
+  return Math.max(0.85, Math.min(3.2, baseInterval / Math.max(0.06, getCurrentFireInterval(state))));
+};
+const getFrictionTravelThreshold = (state: GameState) => Math.max(22, 78 - Math.max(0, state.effects.frictionShots - 1) * 12);
 const getWaveSpawnCount = (waveNumber: number) => Math.max(2, 2 + (waveNumber - 1) * 2);
 
 const beginDeathScreen = (state: GameState) => {
@@ -201,6 +228,8 @@ const beginDeathScreen = (state: GameState) => {
   state.projectiles = [];
   state.soulOrbs = [];
   state.upgrades = [];
+  state.queuedFrictionShots = [];
+  state.queuedWispShots = [];
   addText(state, 'Run ended', { x: state.width / 2, y: 118 }, '#f8fafc');
 };
 
@@ -292,42 +321,52 @@ const spawnFragments = (state: GameState, pos: Vec, count: number, damage: numbe
 };
 
 const killEnemy = (state: GameState, enemy: Enemy) => {
+  if (enemy.deathHandled) return;
+  enemy.deathHandled = true;
+  enemy.hp = 0;
   const deathPos = { x: enemy.pos.x, y: enemy.pos.y };
   state.score += enemy.scoreValue + state.wave.number * 4;
   state.wave.cleared += 1;
   trySoulDrop(state, { ...enemy, pos: deathPos });
   if (state.effects.fragmentationCount > 0) {
     const fragmentDamage = Math.max(1, Math.round(state.player.damage * 0.4)) + state.effects.fragmentationDamageBonus;
-    addText(state, 'FRAG', { x: deathPos.x, y: deathPos.y - 18 }, '#fde68a');
     spawnFragments(state, deathPos, state.effects.fragmentationCount, fragmentDamage, '#fbbf24');
     addImpact(state, deathPos, 22 + state.effects.fragmentationCount * 2, '#fde047', 0.22);
   }
 };
 
-const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#ffffff') => {
-  if (enemy.hp <= 0) return;
+const getBleedTickInterval = (state: GameState) => 1 / Math.max(1, state.effects.bleedDamageMultiplier);
+
+const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#ffffff', applyOnHitEffects = true) => {
+  if (enemy.deathHandled) return;
+  if (enemy.hp <= 0) {
+    killEnemy(state, enemy);
+    return;
+  }
   enemy.hp -= amount;
   enemy.hitFlash = 0.12;
   addText(state, `${amount}`, { x: enemy.pos.x, y: enemy.pos.y - 12 }, color);
   addImpact(state, { x: enemy.pos.x, y: enemy.pos.y }, Math.max(16, enemy.width * 0.42), color, 0.18);
 
-  if (state.effects.coldPerHit > 0) {
+  if (applyOnHitEffects && state.effects.coldPerHit > 0) {
     enemy.slow = Math.min(state.effects.maxSlow, enemy.slow + state.effects.coldPerHit);
   }
 
-  if (state.effects.wound) {
-    enemy.bleed += amount * 0.18;
+  if (applyOnHitEffects && state.effects.wound) {
+    enemy.bleed = Math.max(enemy.bleed, 2);
+    enemy.bleedStacks = Math.min(4, Math.max(0, enemy.bleedStacks) + 1);
+    enemy.bleedTickTimer = Math.min(enemy.bleedTickTimer, getBleedTickInterval(state));
   }
 
-  if (state.effects.lifesteal > 0) {
+  if (applyOnHitEffects && state.effects.lifesteal > 0) {
     healPlayer(state, Math.max(0, amount * state.effects.lifesteal));
   }
 
-  if (state.effects.vampire) {
+  if (applyOnHitEffects && state.effects.vampire) {
     healPlayer(state, Math.max(0, amount * 0.5));
   }
 
-  if (state.effects.freezeExecute && enemy.slow >= 1 && Math.random() < 0.01) {
+  if (applyOnHitEffects && state.effects.freezeExecute && enemy.slow >= 1 && Math.random() < 0.01) {
     enemy.hp = 0;
   }
 
@@ -337,9 +376,9 @@ const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#f
 };
 
 const explodeAt = (state: GameState, center: Vec, radius: number, damage: number, color: string) => {
-  addText(state, 'BOOM', { x: center.x, y: center.y - 12 }, color);
   addImpact(state, center, radius, color, 0.26);
   for (const enemy of state.enemies) {
+    if (enemy.hp <= 0 || enemy.deathHandled) continue;
     if (distance(enemy.pos, center) <= radius) {
       damageEnemy(state, enemy, damage, color);
     }
@@ -351,6 +390,7 @@ const nearestEnemy = (state: GameState, from: Vec, maxDistance = Number.POSITIVE
   let bestDistance = maxDistance;
 
   for (const enemy of state.enemies) {
+    if (enemy.hp <= 0 || enemy.deathHandled) continue;
     const current = distance(from, enemy.pos);
     if (current < bestDistance) {
       best = enemy;
@@ -359,6 +399,41 @@ const nearestEnemy = (state: GameState, from: Vec, maxDistance = Number.POSITIVE
   }
 
   return best;
+};
+
+
+const getThunderHitTarget = (state: GameState, from: Vec, to: Vec) => {
+  const abx = to.x - from.x;
+  const aby = to.y - from.y;
+  const abLenSq = abx * abx + aby * aby || 1;
+  let bestEnemy: Enemy | null = null;
+  let bestT = Number.POSITIVE_INFINITY;
+
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0 || enemy.deathHandled) continue;
+    const apx = enemy.pos.x - from.x;
+    const apy = enemy.pos.y - from.y;
+    const t = (apx * abx + apy * aby) / abLenSq;
+    if (t < 0 || t > 1) continue;
+    const reach = Math.max(enemy.width, enemy.height) * 0.44 + 10;
+    if (distanceToSegment(enemy.pos, from, to) > reach) continue;
+    if (t < bestT) {
+      bestT = t;
+      bestEnemy = enemy;
+    }
+  }
+
+  return bestEnemy;
+};
+
+const getThunderStrikeGroundTarget = (state: GameState, x: number) => {
+  const targetX = clamp(x, 24, state.width - 24);
+  const groundY = getGroundY(state.terrain, targetX);
+  const lift = 10 + Math.random() * 30;
+  return {
+    x: targetX,
+    y: clamp(groundY - lift, 56, state.height - 26),
+  };
 };
 
 const createState = (): GameState => {
@@ -380,6 +455,8 @@ const createState = (): GameState => {
     texts: [],
     thunderStrikes: [],
     impacts: [],
+    queuedFrictionShots: [],
+    queuedWispShots: [],
     wave: {
       number: 1,
       toSpawn: getWaveSpawnCount(1),
@@ -417,26 +494,32 @@ const applyOwnedShopItemsToPlayer = (state: GameState) => {
   state.player.damageTakenMultiplier = 1;
   state.player.moveSpeed = 270;
   state.player.jumpPower = 650;
+  state.player.maxJumps = 1;
 
   for (const item of state.shopItems) {
-    if (!item.owned) continue;
+    if (!item.owned || !item.active) continue;
 
-    if (item.id === 'amberAura') {
+    if (item.id === 'bulwarkStaff') {
       state.player.damageTakenMultiplier *= 0.8;
-      state.player.moveSpeed *= 0.85;
+      state.player.moveSpeed *= 0.62;
     }
 
-    if (item.id === 'shadowAura') {
-      state.player.jumpPower += 150;
+    if (item.id === 'vaultStaff') {
+      state.player.maxJumps = Math.max(state.player.maxJumps, 2);
     }
   }
+
+  state.player.jumpsRemaining = Math.max(0, state.player.maxJumps - 1);
 };
+
 
 const resetPerWaveEffects = (state: GameState) => {
   state.effects.stationaryTime = 0;
   state.effects.focusBonus = 0;
   state.effects.bunkerArmor = 0;
   state.impacts = [];
+  state.queuedFrictionShots = [];
+  state.queuedWispShots = [];
   state.effects.firstHitCritReady = hasAscension(state, 'marksman');
   state.effects.freeRerollAvailable = state.effects.freeReroll;
   state.effects.airPeakY = state.player.pos.y;
@@ -452,6 +535,8 @@ const applyRandomCommon = (state: GameState) => {
 };
 
 const startWave = (state: GameState, number: number) => {
+  if (number > 1) applyMaxHealthUpgrade(state, 2, 2);
+
   state.wave = {
     number,
     toSpawn: getWaveSpawnCount(number),
@@ -471,6 +556,8 @@ const startWave = (state: GameState, number: number) => {
 const beginBetweenWave = (state: GameState) => {
   if (state.player.hp <= 0 || state.status !== 'playing') return;
   state.status = 'between';
+  state.queuedFrictionShots = [];
+  state.queuedWispShots = [];
   state.upgrades = pickUpgradeCards(state);
 };
 
@@ -493,6 +580,8 @@ const openShop = (state: GameState) => {
   state.projectiles = [];
   state.enemies = [];
   state.soulOrbs = [];
+  state.queuedFrictionShots = [];
+  state.queuedWispShots = [];
 };
 
 const resetRun = (state: GameState) => {
@@ -512,6 +601,7 @@ const resetRun = (state: GameState) => {
 export const selectMage = (state: GameState, mageId: MageId) => {
   state.selectedMage = mageId;
   state.player = createPlayer(state.terrain, mageId);
+  applyOwnedShopItemsToPlayer(state);
 };
 
 export const startSelectedRun = (state: GameState) => {
@@ -639,8 +729,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.critChance += 0.05 * scale;
       break;
     case 'growth':
-      state.player.maxHp += Math.round(10 * scale);
-      state.player.hp += Math.round(10 * scale);
+      applyMaxHealthUpgrade(state, Math.round(10 * scale), Math.round(10 * scale));
       break;
     case 'impulse':
       state.player.jumpPower *= 1 + 0.3 * scale;
@@ -680,8 +769,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.frictionShots += 1;
       break;
     case 'growthPlus':
-      state.player.maxHp += 20;
-      state.player.hp += 20;
+      applyMaxHealthUpgrade(state, 20, 20);
       break;
     case 'gush':
       state.player.maxJumps += 1;
@@ -734,14 +822,13 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.fragmentationDamageBonus += 3;
       break;
     case 'frictionPlus':
-      state.effects.frictionShots += 3;
+      state.effects.frictionShots += 1;
       break;
     case 'focus':
       state.effects.focusGainPerSecond += 0.18;
       break;
     case 'growthPlusPlus':
-      state.player.maxHp += 40;
-      state.player.hp += 40;
+      applyMaxHealthUpgrade(state, 40, 40);
       break;
     case 'immortal':
       state.effects.reviveCharges += 1;
@@ -781,24 +868,59 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
 
 const rerollUpgrades = (state: GameState) => {
   if (state.status !== 'between') return;
-  const isFree = state.effects.freeRerollAvailable;
+  const hasUnlimitedFreeRerolls = hasActiveShopItem(state, 'dealerStaff');
+  const isFree = hasUnlimitedFreeRerolls || state.effects.freeRerollAvailable;
   if (!isFree && state.souls < UPGRADE_REROLL_COST) return;
-  if (isFree) state.effects.freeRerollAvailable = false;
-  else state.souls -= UPGRADE_REROLL_COST;
+  if (!hasUnlimitedFreeRerolls && state.effects.freeRerollAvailable) state.effects.freeRerollAvailable = false;
+  else if (!isFree) state.souls -= UPGRADE_REROLL_COST;
   state.upgrades = pickUpgradeCards(state);
-  addText(state, isFree ? 'Rerolled for free' : `-${UPGRADE_REROLL_COST} souls`, { x: state.width / 2, y: 118 }, '#93c5fd');
+  addText(state, isFree ? 'Free' : `-${UPGRADE_REROLL_COST}`, { x: state.width / 2, y: 118 }, '#93c5fd');
+};
+
+const setActiveShopItem = (state: GameState, itemId: ShopItemId) => {
+  let changed = false;
+  for (const entry of state.shopItems) {
+    const nextActive = entry.id === itemId && entry.owned;
+    if (entry.active !== nextActive) changed = true;
+    entry.active = nextActive;
+  }
+
+  if (changed) {
+    applyOwnedShopItemsToPlayer(state);
+  }
 };
 
 const buyShopItem = (state: GameState, itemId: ShopItemId) => {
   const item = state.shopItems.find((entry) => entry.id === itemId);
-  if (!item || item.owned || state.souls < item.cost) return;
+  if (!item) return;
 
-  state.souls -= item.cost;
-  item.owned = true;
-  addText(state, `${item.name} purchased`, { x: state.width / 2, y: 150 }, item.id === 'amberAura' ? '#f59e0b' : '#d1d5db');
+  if (!item.owned) {
+    if (state.souls < item.cost) return;
+    state.souls -= item.cost;
+    item.owned = true;
+    setActiveShopItem(state, itemId);
+    addText(state, `${item.name} purchased`, { x: state.width / 2, y: 150 }, item.color);
+    return;
+  }
+
+  if (!item.active) {
+    setActiveShopItem(state, itemId);
+    addText(state, `${item.name} equipped`, { x: state.width / 2, y: 150 }, item.color);
+  }
 };
 
 export const handleActionKey = (state: GameState, key: string) => {
+  if (state.status === 'playing' && key === 'Escape') {
+    state.status = 'paused';
+    return;
+  }
+
+  if (state.status === 'paused') {
+    if (key === 'Escape' || key === 'Enter') state.status = 'playing';
+    if (key === 'Backspace' || key === 'm' || key === 'M') returnToMenu(state);
+    return;
+  }
+
   if (state.status === 'menu') {
     if (['1', '2', '3', '4', '5'].includes(key)) {
       const mage = MAGES[Number(key) - 1];
@@ -882,6 +1004,18 @@ export const handlePointerClick = (state: GameState, point: Vec) => {
     return;
   }
 
+  if (state.status === 'paused') {
+    if (state.ui.restartRect && pointInRect(point, state.ui.restartRect)) {
+      state.status = 'playing';
+      return;
+    }
+
+    if (state.ui.menuRect && pointInRect(point, state.ui.menuRect)) {
+      returnToMenu(state);
+    }
+    return;
+  }
+
   if (state.status === 'death') {
     if (state.ui.restartRect && pointInRect(point, state.ui.restartRect)) {
       startSelectedRun(state);
@@ -894,28 +1028,65 @@ export const handlePointerClick = (state: GameState, point: Vec) => {
   }
 };
 
+const queueFrictionShot = (state: GameState, behindDirection: 1 | -1, horizontalCarry: number) => {
+  const queuedShot: QueuedFrictionShot = {
+    delay: 0.04,
+    behindDirection,
+    horizontalCarry,
+  };
+  state.queuedFrictionShots.push(queuedShot);
+};
+
+const releaseQueuedFrictionShots = (state: GameState, dt: number) => {
+  if (state.queuedFrictionShots.length === 0) return;
+
+  const readyShots: QueuedFrictionShot[] = [];
+  state.queuedFrictionShots = state.queuedFrictionShots.filter((shot) => {
+    shot.delay -= dt;
+    if (shot.delay <= 0) {
+      readyShots.push(shot);
+      return false;
+    }
+    return true;
+  });
+
+  for (const shot of readyShots) {
+    const baseOffset = Math.max(12, state.player.width * 0.32);
+    createProjectile(state, {
+      pos: {
+        x: state.player.pos.x + shot.behindDirection * baseOffset,
+        y: state.player.pos.y + 12,
+      },
+      vel: {
+        x: shot.horizontalCarry,
+        y: -430 - Math.random() * 28,
+      },
+      radius: 6,
+      damage: Math.max(4, Math.round(state.player.damage * 0.7)),
+      color: '#fb923c',
+      life: 1.4,
+      owner: 'player',
+      behavior: 'friction',
+      pierce: 0,
+      hitIds: [],
+      aoeRadius: 36 * state.effects.frictionRadiusMultiplier,
+      homingStrength: 0,
+      fromUpgrade: 'friction',
+    });
+  }
+};
+
 const spawnFrictionProjectiles = (state: GameState) => {
   if (state.effects.frictionShots <= 0) return;
-  while (state.effects.frictionDistance >= 78) {
-    state.effects.frictionDistance -= 78;
-    for (let i = 0; i < state.effects.frictionShots; i += 1) {
-      const offset = (i - (state.effects.frictionShots - 1) / 2) * 14;
-      createProjectile(state, {
-        pos: { x: state.player.pos.x + offset, y: state.player.pos.y + 12 },
-        vel: { x: Math.random() * 40 - 20, y: -420 - Math.random() * 80 },
-        radius: 6,
-        damage: Math.max(4, Math.round(state.player.damage * 0.7)),
-        color: '#fb923c',
-        life: 1.4,
-        owner: 'player',
-        behavior: 'friction',
-        pierce: 0,
-        hitIds: [],
-        aoeRadius: 36 * state.effects.frictionRadiusMultiplier,
-        homingStrength: 0,
-        fromUpgrade: 'friction',
-      });
-    }
+  const threshold = getFrictionTravelThreshold(state);
+  while (state.effects.frictionDistance >= threshold) {
+    state.effects.frictionDistance -= threshold;
+    const behindDirection: 1 | -1 = Math.abs(state.player.vel.x) > 18
+      ? (state.player.vel.x > 0 ? -1 : 1)
+      : (state.player.facing === 1 ? -1 : 1);
+    const horizontalCarry = state.player.vel.x * 0.08;
+
+    queueFrictionShot(state, behindDirection, horizontalCarry);
   }
 };
 
@@ -994,7 +1165,8 @@ const updatePlayer = (state: GameState, input: InputState, dt: number) => {
   }
 
   state.fireTimer -= dt;
-  if (input.mouseDown && state.fireTimer <= 0) {
+  const shouldAutoFire = state.effects.streamer;
+  if ((input.mouseDown || shouldAutoFire) && state.fireTimer <= 0) {
     firePlayerShot(state, input.mouse);
     state.fireTimer = getCurrentFireInterval(state);
   }
@@ -1024,41 +1196,59 @@ const enemyTouchesPlayer = (state: GameState, enemy: Enemy) => {
 const updateThunderbolts = (state: GameState) => {
   if (state.effects.thunderboltCount <= 0 || state.enemies.length === 0) return;
   for (let i = 0; i < state.effects.thunderboltCount; i += 1) {
-    const target = state.enemies[Math.floor(Math.random() * state.enemies.length)];
-    if (!target) continue;
-    const damage = Math.max(6, Math.round(state.player.damage * 1.1 * state.effects.thunderboltDamageMultiplier));
+    const target = getThunderStrikeGroundTarget(state, 32 + Math.random() * (state.width - 64));
+    const lineFrom = {
+      x: target.x + (Math.random() * 60 - 30),
+      y: 20,
+    };
+    const damage = getThunderboltDamage(state);
     state.thunderStrikes.push({
       id: state.nextId++,
-      x: target.pos.x + (Math.random() * 18 - 9),
-      y: target.pos.y,
-      life: 0.24,
-      maxLife: 0.24,
+      from: lineFrom,
+      to: target,
+      life: 0.28,
+      maxLife: 0.28,
     });
-    explodeAt(state, { x: target.pos.x, y: target.pos.y }, 42, damage, '#60a5fa');
+    createProjectile(state, {
+      pos: target,
+      lineFrom,
+      vel: { x: 0, y: 0 },
+      radius: 2,
+      damage,
+      color: '#60a5fa',
+      life: 0.02,
+      owner: 'player',
+      behavior: 'thunder',
+      pierce: 1,
+      hitIds: [],
+      aoeRadius: 0,
+      homingStrength: 0,
+    });
   }
 };
 
-const updateWisps = (state: GameState, dt: number, input: InputState) => {
-  if (state.effects.wisps <= 0) return;
-  state.effects.wispTimer -= dt;
-  if (state.effects.wispTimer > 0) return;
-  state.effects.wispTimer = Math.max(0.35, 0.95 - state.effects.wisps * 0.08);
+const releaseQueuedWispShots = (state: GameState, dt: number) => {
+  if (state.queuedWispShots.length === 0) return;
 
-  for (let i = 0; i < state.effects.wisps; i += 1) {
-    const target = state.effects.enchanter ? input.mouse : nearestEnemy(state, state.player.pos, 420)?.pos;
-    if (!target) continue;
-    const angle = state.effects.enchanter ? 0 : state.tick * 0.002 + i * (Math.PI * 2 / Math.max(1, state.effects.wisps));
-    const origin = state.effects.enchanter
-      ? { x: state.player.pos.x + state.player.facing * 16, y: state.player.pos.y - 10 }
-      : { x: state.player.pos.x + Math.cos(angle) * 16, y: state.player.pos.y - 10 + Math.sin(angle) * 10 };
-    const dir = normalize({ x: target.x - origin.x, y: target.y - origin.y });
+  const readyShots: QueuedWispShot[] = [];
+  state.queuedWispShots = state.queuedWispShots.filter((shot) => {
+    shot.delay -= dt;
+    if (shot.delay <= 0) {
+      readyShots.push(shot);
+      return false;
+    }
+    return true;
+  });
+
+  for (const shot of readyShots) {
+    const dir = normalize({ x: shot.target.x - shot.origin.x, y: shot.target.y - shot.origin.y });
     createProjectile(state, {
-      pos: origin,
-      vel: { x: dir.x * state.player.projectileSpeed * 0.55, y: dir.y * state.player.projectileSpeed * 0.55 },
+      pos: { ...shot.origin },
+      vel: { x: dir.x * shot.speed, y: dir.y * shot.speed },
       radius: 4,
-      damage: Math.max(1, Math.round(state.player.damage * 0.5)),
-      color: '#f5d0fe',
-      life: 1.4,
+      damage: shot.damage,
+      color: shot.color,
+      life: 1.85,
       owner: 'player',
       behavior: 'wisp',
       pierce: 0,
@@ -1069,31 +1259,80 @@ const updateWisps = (state: GameState, dt: number, input: InputState) => {
   }
 };
 
+const updateWisps = (state: GameState, dt: number, input: InputState) => {
+  if (state.effects.wisps <= 0) return;
+
+  state.effects.wispTimer -= dt;
+  if (state.effects.wispTimer > 0) return;
+
+  const attackSpeedFactor = getAttackSpeedFactor(state);
+  const baseInterval = state.effects.enchanter
+    ? Math.max(0.15, getCurrentFireInterval(state) * 0.55)
+    : Math.max(0.3, 0.9 - state.effects.wisps * 0.08 - (attackSpeedFactor - 1) * 0.08);
+  state.effects.wispTimer = baseInterval;
+
+  const primaryTarget = state.effects.enchanter ? input.mouse : nearestEnemy(state, state.player.pos)?.pos;
+  if (!primaryTarget) return;
+
+  const shotSpacing = state.effects.enchanter ? 0.04 : 0.12;
+  const projectileSpeed = state.player.projectileSpeed * 0.55 * attackSpeedFactor;
+  const damage = Math.max(1, Math.round(state.player.damage * 0.5));
+
+  for (let i = 0; i < state.effects.wisps; i += 1) {
+    const angle = state.effects.enchanter ? 0 : state.tick * 0.002 + i * (Math.PI * 2 / Math.max(1, state.effects.wisps));
+    const origin = state.effects.enchanter
+      ? { x: state.player.pos.x + state.player.facing * (14 + i * 4), y: state.player.pos.y - 10 }
+      : { x: state.player.pos.x + Math.cos(angle) * 16, y: state.player.pos.y - 10 + Math.sin(angle) * 10 };
+
+    const queuedShot: QueuedWispShot = {
+      delay: i * shotSpacing,
+      origin,
+      target: { ...primaryTarget },
+      speed: projectileSpeed,
+      damage,
+      color: '#f5d0fe',
+    };
+    state.queuedWispShots.push(queuedShot);
+  }
+};
+
+const getAimBeamPoints = (state: GameState, input: InputState) => ({
+  from: {
+    x: state.player.pos.x + state.player.width * 0.28 * state.player.facing,
+    y: state.player.pos.y - state.player.height * 0.06,
+  },
+  to: { x: input.mouse.x, y: input.mouse.y },
+});
+
+const updateAimLaser = (state: GameState, input: InputState) => {
+  if (!state.effects.enchanter && !state.effects.streamer) return;
+  const { from, to } = getAimBeamPoints(state, input);
+  state.effects.streamerBeam = {
+    from,
+    to,
+    timer: state.effects.enchanter ? 1 : 0.2,
+  };
+};
+
 const updateStreamer = (state: GameState, dt: number, input: InputState) => {
-  if (!state.effects.streamer || !input.mouseDown) return;
+  if (!state.effects.streamer) return;
+
+  const { from, to } = getAimBeamPoints(state, input);
+  state.effects.streamerBeam = { from, to, timer: state.effects.enchanter ? 1 : 0.2 };
+
   state.effects.streamerTimer -= dt;
   if (state.effects.streamerTimer > 0) return;
-  state.effects.streamerTimer = Math.max(0.08, state.effects.streamerInterval / (1 + state.effects.focusBonus * 0.6));
+  state.effects.streamerTimer = getCurrentFireInterval(state);
 
-  const from = { x: state.player.pos.x + state.player.facing * 18, y: state.player.pos.y - 10 };
-  const aimDir = normalize({ x: input.mouse.x - from.x, y: input.mouse.y - from.y });
-  const to = { x: from.x + aimDir.x * 560, y: from.y + aimDir.y * 560 };
-  state.effects.streamerBeam = { from, to, timer: 0.09 };
+  const attackSpeedLevel = getUpgradeProgressCount(state, 'resonance');
+  const streamerDamage = Math.max(1, attackSpeedLevel / 2);
 
-  const shotsPerSecond = 1 / getCurrentFireInterval(state);
-  const damage = Math.max(3, Math.round(state.player.damage * 0.45 + shotsPerSecond * 1.8));
-  let hitAny = false;
   for (const enemy of state.enemies) {
+    const hitRadius = Math.max(8, Math.hypot(enemy.width * 0.5, enemy.height * 0.5) + 4);
     const d = distanceToSegment(enemy.pos, from, to);
-    if (d <= Math.max(enemy.width, enemy.height) * 0.42) {
-      damageEnemy(state, enemy, damage, '#93c5fd');
-      hitAny = true;
+    if (d <= hitRadius) {
+      damageEnemy(state, enemy, streamerDamage, '#ef4444');
     }
-  }
-
-  if (!hitAny) {
-    const target = nearestEnemy(state, input.mouse, 220) ?? nearestEnemy(state, from, 560);
-    if (target) damageEnemy(state, target, damage, '#93c5fd');
   }
 };
 
@@ -1102,7 +1341,7 @@ const updateBurningMan = (state: GameState, dt: number) => {
   state.effects.burningManTimer -= dt;
   if (state.effects.burningManTimer > 0) return;
   state.effects.burningManTimer = 2;
-  explodeAt(state, state.player.pos, 70, Math.max(8, state.effects.bodyDamage), '#fb923c');
+  explodeAt(state, state.player.pos, 110, Math.max(8, state.effects.bodyDamage), '#fb923c');
 };
 
 const updateEnemies = (state: GameState, dt: number) => {
@@ -1110,11 +1349,20 @@ const updateEnemies = (state: GameState, dt: number) => {
 
   for (const enemy of state.enemies) {
     enemy.bodyHitCooldown = Math.max(0, enemy.bodyHitCooldown - dt);
-    enemy.bleed = Math.max(0, enemy.bleed - enemy.bleed * dt * 0.1);
+    enemy.bleed = Math.max(0, enemy.bleed - dt);
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
 
-    if (enemy.bleed > 0) {
-      damageEnemy(state, enemy, enemy.bleed * dt * state.effects.bleedDamageMultiplier, '#ef4444');
+    const bleedTickInterval = getBleedTickInterval(state);
+    if (enemy.bleed > 0 && enemy.bleedStacks > 0) {
+      enemy.bleedTickTimer -= dt;
+      while (enemy.bleed > 0 && enemy.bleedStacks > 0 && enemy.bleedTickTimer <= 0) {
+        const bleedDamage = Math.max(1, enemy.bleedStacks);
+        damageEnemy(state, enemy, bleedDamage, '#ef4444', false);
+        enemy.bleedTickTimer += bleedTickInterval;
+      }
+    } else {
+      enemy.bleedStacks = 0;
+      enemy.bleedTickTimer = bleedTickInterval;
     }
 
     const desiredY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12;
@@ -1163,6 +1411,9 @@ const updateEnemies = (state: GameState, dt: number) => {
     }
   }
 
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0 && !enemy.deathHandled) killEnemy(state, enemy);
+  }
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
 };
 
@@ -1184,9 +1435,53 @@ const maybeSpawnBlackHole = (state: GameState, projectile: Projectile) => {
   });
 };
 
+const resolveProjectileClash = (state: GameState, projectile: Projectile, enemyProjectile: Projectile) => {
+  const playerProjectileHp = Math.max(1, projectile.projectileHp ?? 1) - 1;
+  const enemyProjectileHp = Math.max(1, enemyProjectile.projectileHp ?? 1) - 1;
+
+  projectile.projectileHp = playerProjectileHp;
+  enemyProjectile.projectileHp = enemyProjectileHp;
+
+  const impactPos = {
+    x: (projectile.pos.x + enemyProjectile.pos.x) * 0.5,
+    y: (projectile.pos.y + enemyProjectile.pos.y) * 0.5,
+  };
+  addImpact(state, impactPos, Math.max(8, projectile.radius + enemyProjectile.radius + 4), '#f8fafc', 0.16);
+
+  if (enemyProjectileHp <= 0) {
+    enemyProjectile.life = 0;
+  } else {
+    enemyProjectile.pos.x += enemyProjectile.vel.x * 0.03;
+    enemyProjectile.pos.y += enemyProjectile.vel.y * 0.03;
+  }
+
+  if (playerProjectileHp <= 0) {
+    projectile.life = 0;
+  } else {
+    projectile.pos.x += projectile.vel.x * 0.03;
+    projectile.pos.y += projectile.vel.y * 0.03;
+    if (state.effects.pacMan && enemyProjectileHp <= 0) {
+      projectile.damage += 1 + Math.round(projectile.chargeBonus ?? 0);
+    }
+  }
+};
+
 const updateProjectiles = (state: GameState, dt: number) => {
   for (const projectile of state.projectiles) {
     projectile.life -= dt;
+
+    if (projectile.behavior === 'thunder') {
+      const from = projectile.lineFrom ?? { x: projectile.pos.x, y: 20 };
+      const hitTarget = getThunderHitTarget(state, from, projectile.pos);
+      if (hitTarget) {
+        damageEnemy(state, hitTarget, projectile.damage, projectile.color);
+        addImpact(state, hitTarget.pos, Math.max(18, hitTarget.width * 0.85), projectile.color, 0.22);
+      } else {
+        addImpact(state, projectile.pos, 28, projectile.color, 0.18);
+      }
+      projectile.life = 0;
+      continue;
+    }
 
     if (projectile.behavior === 'blackhole') {
       for (const enemy of state.enemies) {
@@ -1237,7 +1532,7 @@ const updateProjectiles = (state: GameState, dt: number) => {
     }
 
     for (const enemyProjectile of state.projectiles) {
-      if (enemyProjectile.owner !== 'enemy') continue;
+      if (enemyProjectile.owner !== 'enemy' || enemyProjectile.life <= 0 || enemyProjectile.id === projectile.id) continue;
       if (!rectsOverlap(
         projectile.pos.x - projectile.radius,
         projectile.pos.y - projectile.radius,
@@ -1249,12 +1544,13 @@ const updateProjectiles = (state: GameState, dt: number) => {
         enemyProjectile.radius * 2,
       )) continue;
 
-      if (state.effects.pacMan) projectile.damage += 1 + Math.round(projectile.chargeBonus ?? 0);
-      enemyProjectile.life = 0;
-      if (projectile.pierce > 0) projectile.pierce -= 1;
+      resolveProjectileClash(state, projectile, enemyProjectile);
+      if (projectile.life <= 0) break;
     }
+    if (projectile.life <= 0) continue;
 
     for (const enemy of state.enemies) {
+      if (enemy.hp <= 0 || enemy.deathHandled) continue;
       const hit = rectsOverlap(
         projectile.pos.x - projectile.radius,
         projectile.pos.y - projectile.radius,
@@ -1294,10 +1590,13 @@ const updateProjectiles = (state: GameState, dt: number) => {
       projectile.life = 0;
     }
 
-    const offscreen = projectile.pos.x < -80 || projectile.pos.x > state.width + 80 || projectile.pos.y < -120 || projectile.pos.y > state.height + 120;
+    const offscreen = projectile.pos.x < -140 || projectile.pos.x > state.width + 140 || projectile.pos.y < -180 || projectile.pos.y > state.height + 180;
     if (offscreen) projectile.life = 0;
   }
 
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0 && !enemy.deathHandled) killEnemy(state, enemy);
+  }
   state.enemies = state.enemies.filter((enemy) => enemy.hp > 0);
   state.projectiles = state.projectiles.filter((projectile) => projectile.life > 0);
 };
@@ -1389,11 +1688,15 @@ const updatePassiveEffects = (state: GameState, dt: number, input: InputState) =
 
   updateWisps(state, dt, input);
   updateStreamer(state, dt, input);
+  updateAimLaser(state, input);
   updateBurningMan(state, dt);
 
-  if (state.effects.streamerBeam) {
+  if (state.effects.streamerBeam && !state.effects.enchanter) {
     state.effects.streamerBeam.timer -= dt;
     if (state.effects.streamerBeam.timer <= 0) state.effects.streamerBeam = null;
+  }
+  if (!state.effects.enchanter && !state.effects.streamer && state.effects.streamerBeam) {
+    state.effects.streamerBeam = null;
   }
 
   if (!state.effects.barrierReady && state.effects.barrierCooldown > 0) {
@@ -1423,7 +1726,7 @@ export const updateGameState = (state: GameState, input: InputState, dt: number)
   state.pointer = { ...input.mouse };
 
   if (state.status !== 'playing') {
-    updateTexts(state, dt);
+    if (state.status !== 'paused') updateTexts(state, dt);
     return;
   }
 
@@ -1434,6 +1737,8 @@ export const updateGameState = (state: GameState, input: InputState, dt: number)
   }
 
   updatePassiveEffects(state, dt, input);
+  releaseQueuedWispShots(state, dt);
+  releaseQueuedFrictionShots(state, dt);
   updateEnemies(state, dt);
   if (state.status !== 'playing') {
     updateTexts(state, dt);
