@@ -113,6 +113,7 @@ export type Projectile = {
   projectileMaxHp?: number;
   fromUpgrade?: string;
   chargeBonus?: number;
+  tickTimer?: number;
 };
 
 export type Enemy = {
@@ -301,6 +302,7 @@ export type RunEffects = {
   focusGainPerSecond: number;
   bunkerArmor: number;
   bunkerArmorCap: number;
+  resistArmor: number;
   freeReroll: boolean;
   freeRerollAvailable: boolean;
   epicChanceBonus: number;

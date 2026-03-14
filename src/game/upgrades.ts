@@ -16,7 +16,7 @@ export const COMMON_UPGRADES: UpgradeCard[] = [
   card('growth', 'Growth', 'Max HP +10', 'common', '♥', '#f8fafc'),
   card('impulse', 'Impulse', 'Jump Height +30%', 'common', '↟', '#f8fafc'),
   card('renew', 'Renew', 'Heal to Max HP', 'common', '✚', '#f8fafc'),
-  card('resist', 'Resist', 'Defense +4%', 'common', '▣', '#f8fafc'),
+  card('resist', 'Resist', 'Armor +4% damage reduction', 'common', '▣', '#f8fafc'),
   card('resonance', 'Resonance', 'Atk Speed +12%', 'common', '≫', '#f8fafc'),
   card('souls', 'Souls', 'Chance to drop soul orb +1%', 'common', '◌', '#f8fafc'),
   card('stability', 'Stability', 'Projectile takes +1 hit before exploding', 'common', '⬢', '#f8fafc'),
@@ -86,11 +86,11 @@ export const ASCENSIONS: UpgradeCard[] = [
   card('protector', 'Protector', 'When your shield breaks, shoot in all directions', 'ascension', '⬡', '#f59e0b', { sourceId: 'barrier', threshold: 3 }),
   card('ramDestroyer', 'RAM Destroyer', 'Fragmentation projectiles become larger', 'ascension', '✹', '#f59e0b', { sourceId: 'fragmentation', threshold: 10 }),
   card('sadistic', 'Sadistic', 'Damage the attacker back', 'ascension', '↺', '#f59e0b', { sourceId: 'resist', threshold: 6 }),
-  card('speculator', 'Speculator', 'Can deal super critical hits', 'ascension', '✺', '#f59e0b', { sourceId: 'precision', threshold: 5 }),
+  card('speculator', 'Speculator', 'Critical hits have a 25% chance to become super critical hits', 'ascension', '✺', '#f59e0b', { sourceId: 'precision', threshold: 5 }),
   card('streamer', 'Streamer', 'Shoot a beam from your staff based on attack speed', 'ascension', '═', '#f59e0b', { sourceId: 'resonance', threshold: 8 }),
   card('tryhard', 'Tryhard', 'Does absolutely nothing', 'ascension', '☻', '#f59e0b', { sourceId: 'catalyst', threshold: 20 }),
   card('vampire', 'Vampire', 'Half of all your damage returns as HP', 'ascension', '🦇', '#f59e0b', { sourceId: 'leech', threshold: 12 }),
-  card('whiteDwarf', 'White Dwarf', 'Projectiles normalize in size and create black holes on impact that pull nearby monsters and deal 1 damage per second for each Charge level', 'ascension', '●', '#f59e0b', { sourceId: 'charge', threshold: 5 }),
+  card('whiteDwarf', 'White Dwarf', 'Projectiles normalize in size and create large black holes on impact that pull monsters from farther away and deal 1 damage per second for each Charge level', 'ascension', '●', '#f59e0b', { sourceId: 'charge', threshold: 5 }),
 ];
 
 export const ALL_UPGRADES: UpgradeCard[] = [
@@ -153,24 +153,52 @@ const getUpgradeFamilyCards = (sourceId?: UpgradeId) => getUpgradeFamily(sourceI
 
 const hasCommonOrUncommonVariant = (cards: UpgradeCard[]) => cards.some((upgrade) => upgrade.rarity === 'common' || upgrade.rarity === 'uncommon');
 
-const getUpgradePointValue = (upgrade: UpgradeCard, familyCards: UpgradeCard[]) => {
+const ASCENSION_POINT_OVERRIDES: Partial<Record<UpgradeId, number>> = {
+  appraisal: 1,
+  barrier: 1,
+  charge: 1,
+  cloak: 1,
+  cold: 1,
+  focus: 1,
+  fragmentation: 1,
+  fragmentationPlus: 2,
+  friction: 1,
+  frictionPlus: 2,
+  growthPlusPlus: 2,
+  gush: 1,
+  leech: 1,
+  leechPlus: 2,
+  luck: 1,
+  orb: 1,
+  overheat: 1,
+  precision: 1,
+  rage: 1,
+  regrowth: 1,
+  shrink: 1,
+  thunderbolt: 1,
+  thunderboltPlus: 2,
+  tome: 1,
+  willOWisp: 1,
+  wound: 1,
+};
+
+const getUpgradePointValue = (upgrade: UpgradeCard, familyCards: UpgradeCard[], _sourceId?: UpgradeId) => {
+  const override = ASCENSION_POINT_OVERRIDES[upgrade.id];
+  if (override !== undefined) return override;
   if (upgrade.rarity === 'common') return 1;
   if (upgrade.rarity === 'uncommon') return 2;
   if (upgrade.rarity === 'epic') return hasCommonOrUncommonVariant(familyCards) ? 3 : 1;
   return 1;
 };
 
-const TEST_ASCENSION_THRESHOLD = 1;
-
 const getAscensionThreshold = (sourceId?: UpgradeId) => {
-  const family = getUpgradeFamilyCards(sourceId);
-  if (family.length === 0) return Number.POSITIVE_INFINITY;
-  return TEST_ASCENSION_THRESHOLD;
+  if (!sourceId) return Number.POSITIVE_INFINITY;
+  return ASCENSIONS.find((ascension) => ascension.sourceId === sourceId)?.threshold ?? Number.POSITIVE_INFINITY;
 };
 
 export const getAscensionStackCount = (state: GameState, sourceId?: UpgradeId) => {
   const family = getUpgradeFamilyCards(sourceId);
-  return family.reduce((total, upgrade) => total + (state.upgradeCounts[upgrade.id] ?? 0) * getUpgradePointValue(upgrade, family), 0);
+  return family.reduce((total, upgrade) => total + (state.upgradeCounts[upgrade.id] ?? 0) * getUpgradePointValue(upgrade, family, sourceId), 0);
 };
 
 export const getUpgradeProgressCount = getAscensionStackCount;
@@ -257,7 +285,7 @@ export const getOwnedDisplayCards = (state: GameState): Array<{ card: UpgradeCar
 
   familyKeys.forEach((familyKey) => {
     const family = getUpgradeFamilyCards(familyKey);
-    const count = family.reduce((total, upgrade) => total + (state.upgradeCounts[upgrade.id] ?? 0) * getUpgradePointValue(upgrade, family), 0);
+    const count = family.reduce((total, upgrade) => total + (state.upgradeCounts[upgrade.id] ?? 0) * getUpgradePointValue(upgrade, family, familyKey), 0);
     if (count <= 0) return;
     const representative = getUpgradeCard(familyKey);
     entries.push({ card: representative, count });

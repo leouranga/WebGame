@@ -988,7 +988,7 @@ const drawBetweenWave = (ctx: CanvasRenderingContext2D, state: GameState) => {
 
   const rerollRect = { x: state.width / 2 - 126, y: startY + contentHeight + 24, w: 252, h: 40 };
   state.ui.rerollRect = rerollRect;
-  const rerollFree = Boolean(getActiveShopItem(state)?.id === 'dealerStaff') || state.effects.freeRerollAvailable;
+  const rerollFree = Boolean(getActiveShopItem(state)?.id === 'dealerStaff') || state.effects.freeReroll || state.effects.freeRerollAvailable;
   const rerollEnabled = rerollFree || state.souls >= UPGRADE_REROLL_COST;
   fillPanel(ctx, rerollRect, rerollEnabled ? 'rgba(30,41,59,0.92)' : 'rgba(30,41,59,0.55)', rerollEnabled ? '#93c5fd' : 'rgba(100,116,139,0.7)');
   ctx.textAlign = 'center';

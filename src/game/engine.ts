@@ -56,7 +56,7 @@ const getThunderboltBaseDamage = (state: GameState) => {
 const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThunderboltBaseDamage(state) * state.effects.thunderboltDamageMultiplier));
 const getThunderboltStyle = (state: GameState): 'thunder' | 'god' => (state.effects.godOfThunder ? 'god' : 'thunder');
 const getThunderboltColor = (state: GameState) => (state.effects.godOfThunder ? '#ef4444' : '#60a5fa');
-const EXORCIST_RADIUS = 84;
+const EXORCIST_RADIUS = 100;
 
 const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'soul' | 'god' = 'thunder', from?: Vec, flashRadius?: number) => {
   state.thunderStrikes.push({
@@ -114,6 +114,7 @@ const createEffects = (): RunEffects => ({
   focusGainPerSecond: 0,
   bunkerArmor: 0,
   bunkerArmorCap: 0,
+  resistArmor: 0,
   freeReroll: false,
   freeRerollAvailable: false,
   epicChanceBonus: 0,
@@ -230,9 +231,15 @@ const applyMaxHealthUpgrade = (state: GameState, maxHpGain: number, healGain = m
 };
 
 
+const getArmorMultiplier = (armorPercent: number) => {
+  if (armorPercent <= 0) return 1;
+  return 1 - Math.min(95, armorPercent) / 100;
+};
+
 const getCurrentDefenseMultiplier = (state: GameState) => {
-  const bunker = state.effects.bunkerArmor > 0 ? 1 - Math.min(0.95, state.effects.bunkerArmor / 100) : 1;
-  return state.player.damageTakenMultiplier * bunker;
+  const bunker = getArmorMultiplier(state.effects.bunkerArmor);
+  const resist = getArmorMultiplier(state.effects.resistArmor);
+  return state.player.damageTakenMultiplier * bunker * resist;
 };
 
 const spawnRingProjectiles = (state: GameState, count: number, damage: number, color: string, radius = 5) => {
@@ -832,7 +839,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.player.hp = state.player.maxHp;
       break;
     case 'resist':
-      state.player.damageTakenMultiplier *= Math.max(0.35, 1 - 0.04 * scale);
+      state.effects.resistArmor += 4 * scale;
       break;
     case 'resonance':
       state.player.fireInterval = Math.max(0.08, state.player.fireInterval / (1 + 0.12 * scale));
@@ -965,7 +972,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
 
 const rerollUpgrades = (state: GameState) => {
   if (state.status !== 'between') return;
-  const hasUnlimitedFreeRerolls = hasActiveShopItem(state, 'dealerStaff');
+  const hasUnlimitedFreeRerolls = hasActiveShopItem(state, 'dealerStaff') || state.effects.freeReroll;
   const isFree = hasUnlimitedFreeRerolls || state.effects.freeRerollAvailable;
   if (!isFree && state.souls < UPGRADE_REROLL_COST) return;
   if (!hasUnlimitedFreeRerolls && state.effects.freeRerollAvailable) state.effects.freeRerollAvailable = false;
@@ -1660,8 +1667,9 @@ const maybeSpawnBlackHole = (state: GameState, projectile: Projectile) => {
     behavior: 'blackhole',
     pierce: 999,
     hitIds: [],
-    aoeRadius: 70,
+    aoeRadius: 185,
     homingStrength: 0,
+    tickTimer: 1,
   });
 };
 
@@ -1716,15 +1724,25 @@ const updateProjectiles = (state: GameState, dt: number) => {
 
     if (projectile.behavior === 'blackhole') {
       const chargeLevel = Math.max(0, state.upgradeCounts.charge ?? 0);
-      const whiteDwarfDamagePerSecond = Math.max(1, chargeLevel);
+      const whiteDwarfDamagePerTick = chargeLevel;
+      projectile.tickTimer = (projectile.tickTimer ?? 1) - dt;
+      let shouldTickDamage = false;
+      if ((projectile.tickTimer ?? 0) <= 0) {
+        shouldTickDamage = true;
+        while ((projectile.tickTimer ?? 0) <= 0) {
+          projectile.tickTimer = (projectile.tickTimer ?? 0) + 1;
+        }
+      }
       for (const enemy of state.enemies) {
         const dist = distance(enemy.pos, projectile.pos);
         if (dist <= projectile.aoeRadius) {
           const pull = normalize({ x: projectile.pos.x - enemy.pos.x, y: projectile.pos.y - enemy.pos.y });
-          const pullStrength = 105 * Math.max(0.35, 1 - dist / Math.max(1, projectile.aoeRadius));
+          const pullStrength = 120 * Math.max(0.4, 1 - dist / Math.max(1, projectile.aoeRadius));
           enemy.pos.x += pull.x * pullStrength * dt;
-          enemy.pos.y += pull.y * pullStrength * 0.88 * dt;
-          damageEnemy(state, enemy, whiteDwarfDamagePerSecond * dt, '#a855f7');
+          enemy.pos.y += pull.y * pullStrength * 0.92 * dt;
+          if (shouldTickDamage && whiteDwarfDamagePerTick > 0) {
+            damageEnemy(state, enemy, whiteDwarfDamagePerTick, '#a855f7');
+          }
         }
       }
       continue;

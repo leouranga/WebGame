@@ -44,7 +44,7 @@ export const rollCritical = (state: GameState): { multiplier: number; kind: Crit
 
   // A normal critical always deals the current hit damage plus 50% more.
   // Extra crit bonus stacks on top of that baseline.
-  if (state.effects.superCrits && Math.random() < 0.18) {
+  if (state.effects.superCrits && Math.random() < 0.25) {
     return {
       multiplier: 1 + BASE_SUPER_CRIT_BONUS_MULTIPLIER + state.effects.critBonus,
       kind: 'super',
