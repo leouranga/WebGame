@@ -32,7 +32,7 @@ export type SpellBehavior =
 
 export type EnemyKind = 'wisp' | 'crusher' | 'spitter' | 'oracle';
 
-export type GameStatus = 'menu' | 'playing' | 'paused' | 'between' | 'death' | 'shop';
+export type GameStatus = 'menu' | 'playing' | 'paused' | 'between' | 'death' | 'shop' | 'ascension';
 
 export type UpgradeRarity = 'common' | 'uncommon' | 'epic' | 'ascension';
 
@@ -90,6 +90,8 @@ export type Player = {
   jumpsRemaining: number;
 };
 
+export type CriticalKind = 'none' | 'crit' | 'super';
+
 export type Projectile = {
   id: number;
   pos: Vec;
@@ -97,6 +99,8 @@ export type Projectile = {
   vel: Vec;
   radius: number;
   damage: number;
+  baseDamage?: number;
+  critKind?: CriticalKind;
   color: string;
   life: number;
   owner: 'player' | 'enemy';
@@ -141,6 +145,10 @@ export type Enemy = {
   bleedTickTimer: number;
   bodyHitCooldown: number;
   deathHandled: boolean;
+  marksmanCritConsumed: boolean;
+  spawnStartY: number;
+  spawnElapsed: number;
+  spawnDuration: number;
 };
 
 export type OrbKind = 'soul' | 'heal';
@@ -169,6 +177,8 @@ export type LightningStrike = {
   to: Vec;
   life: number;
   maxLife: number;
+  style?: 'thunder' | 'soul' | 'god';
+  flashRadius?: number;
 };
 
 export type QueuedFrictionShot = {
@@ -184,6 +194,11 @@ export type QueuedWispShot = {
   speed: number;
   damage: number;
   color: string;
+};
+
+export type WispFollower = {
+  pos: Vec;
+  vel: Vec;
 };
 
 export type ImpactEffect = {
@@ -249,6 +264,7 @@ export type RunEffects = {
   soulDropBonus: number;
   projectileSizeMultiplier: number;
   invulnMultiplier: number;
+  cloakInvulnDuration: number;
   fragmentationCount: number;
   fragmentationDamageBonus: number;
   fragmentationLifeMultiplier: number;
@@ -264,6 +280,7 @@ export type RunEffects = {
   thunderboltTimer: number;
   thunderboltInterval: number;
   thunderboltDamageMultiplier: number;
+  godOfThunder: boolean;
   appraisalChoices: number;
   barrierReady: boolean;
   barrierCooldown: number;
@@ -317,7 +334,15 @@ export type RunEffects = {
   airPeakY: number;
   hoarder: boolean;
   attackCharges: number;
+  jumpHoldTimer: number;
+  jumpHoldMax: number;
   streamerBeam: { from: Vec; to: Vec; timer: number } | null;
+};
+
+export type AscensionNoticeState = {
+  active: UpgradeCard | null;
+  queue: UpgradeCard[];
+  returnStatus: Exclude<GameStatus, 'ascension'>;
 };
 
 export type GameState = {
@@ -337,6 +362,7 @@ export type GameState = {
   impacts: ImpactEffect[];
   queuedFrictionShots: QueuedFrictionShot[];
   queuedWispShots: QueuedWispShot[];
+  wispFollowers: WispFollower[];
   wave: WaveState;
   fireTimer: number;
   souls: number;
@@ -348,4 +374,5 @@ export type GameState = {
   ui: UiRects;
   pointer: Vec;
   effects: RunEffects;
+  ascensionNotice: AscensionNoticeState;
 };

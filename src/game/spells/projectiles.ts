@@ -1,7 +1,7 @@
 import { getMageDefinition } from '@/game/characters/mages';
 import { clamp, getGroundY } from '@/game/terrain';
 import { normalize } from '@/game/utils';
-import type { Enemy, GameState, Projectile, Vec } from '@/game/types';
+import type { CriticalKind, Enemy, GameState, Projectile, Vec } from '@/game/types';
 
 export const createProjectile = (state: GameState, projectile: Omit<Projectile, 'id'>) => {
   const projectileHp = Math.max(1, Math.round(projectile.projectileHp ?? 1));
@@ -28,7 +28,10 @@ const getDamageMultiplier = (state: GameState) => {
   return multiplier;
 };
 
-const getCriticalMultiplier = (state: GameState) => {
+const BASE_CRIT_BONUS_MULTIPLIER = 0.5;
+const BASE_SUPER_CRIT_BONUS_MULTIPLIER = 1.5;
+
+export const rollCritical = (state: GameState): { multiplier: number; kind: CriticalKind } => {
   let crit = false;
   if (state.effects.firstHitCritReady) {
     crit = true;
@@ -37,24 +40,39 @@ const getCriticalMultiplier = (state: GameState) => {
     crit = true;
   }
 
-  if (!crit) return 1;
+  if (!crit) return { multiplier: 1, kind: 'none' };
+
+  // A normal critical always deals the current hit damage plus 50% more.
+  // Extra crit bonus stacks on top of that baseline.
   if (state.effects.superCrits && Math.random() < 0.18) {
-    return 2.5 + state.effects.critBonus;
+    return {
+      multiplier: 1 + BASE_SUPER_CRIT_BONUS_MULTIPLIER + state.effects.critBonus,
+      kind: 'super',
+    };
   }
-  return 1.5 + state.effects.critBonus;
+
+  return {
+    multiplier: 1 + BASE_CRIT_BONUS_MULTIPLIER + state.effects.critBonus,
+    kind: 'crit',
+  };
 };
+
+export const consumeCriticalMultiplier = (state: GameState) => rollCritical(state).multiplier;
 
 export const firePlayerShot = (state: GameState, aim: Vec) => {
   const player = state.player;
   const sizeMultiplier = state.effects.whiteDwarf ? 1 : state.effects.projectileSizeMultiplier;
   const chargeMultiplier = 1 + state.effects.attackCharges;
-  const damageMultiplier = getDamageMultiplier(state) * getCriticalMultiplier(state) * chargeMultiplier;
-  const damage = Math.round(player.damage * damageMultiplier);
+  const nonCritDamageMultiplier = getDamageMultiplier(state) * chargeMultiplier;
+  const critRoll = rollCritical(state);
+  const baseDamage = Math.max(1, Math.round(player.damage * nonCritDamageMultiplier));
+  const damage = Math.max(1, Math.round(baseDamage * critRoll.multiplier));
   state.effects.attackCharges = 0;
 
   if (player.behavior === 'thunder') {
     const baseMageDamage = getMageDefinition(player.mageId).damage;
-    const thunderDamage = Math.round((50 + Math.max(0, player.damage - baseMageDamage)) * damageMultiplier * state.effects.thunderboltDamageMultiplier);
+    const thunderBaseDamage = Math.max(1, Math.round((50 + Math.max(0, player.damage - baseMageDamage)) * nonCritDamageMultiplier * state.effects.thunderboltDamageMultiplier));
+    const thunderDamage = Math.max(1, Math.round(thunderBaseDamage * critRoll.multiplier));
     const targetX = clamp(aim.x, 24, state.width - 24);
     const target = {
       x: targetX,
@@ -71,6 +89,7 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
       to: target,
       life: 0.28,
       maxLife: 0.28,
+      style: state.effects.godOfThunder ? 'god' : 'thunder',
     });
 
     createProjectile(state, {
@@ -79,7 +98,9 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
       vel: { x: 0, y: 0 },
       radius: 2,
       damage: Math.max(1, thunderDamage),
-      color: '#93c5fd',
+      baseDamage: thunderBaseDamage,
+      critKind: critRoll.kind,
+      color: state.effects.godOfThunder ? '#ef4444' : '#93c5fd',
       life: 0.02,
       owner: 'player',
       behavior: 'thunder',
@@ -104,6 +125,8 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
       vel: { x: direction.x * player.projectileSpeed * 0.55, y: direction.y * player.projectileSpeed * 1.15 },
       radius: player.projectileRadius * sizeMultiplier,
       damage,
+      baseDamage,
+      critKind: critRoll.kind,
       color: '#a855f7',
       life: 2.75,
       owner: 'player',
@@ -127,6 +150,8 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
     vel: { x: direction.x * player.projectileSpeed, y: direction.y * player.projectileSpeed },
     radius: player.projectileRadius * sizeMultiplier,
     damage,
+    baseDamage,
+    critKind: critRoll.kind,
     color: player.color,
     life: 2.75,
     owner: 'player',
@@ -145,7 +170,7 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
   const target = { x: state.player.pos.x, y: state.player.pos.y - 8 };
   let direction = aimDirection(enemy.pos, target);
 
-  if (state.effects.enemyMissChance > 0 && Math.random() < state.effects.enemyMissChance) {
+  if (state.effects.enemyMissChance > 0 && Math.random() * 100 < state.effects.enemyMissChance) {
     const angle = (Math.random() - 0.5) * 1.2;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
@@ -153,6 +178,13 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
       x: direction.x * cos - direction.y * sin,
       y: direction.x * sin + direction.y * cos,
     };
+    state.texts.push({
+      id: state.nextId++,
+      pos: { x: state.player.pos.x, y: state.player.pos.y - 34 },
+      value: 'miss',
+      color: '#e5e7eb',
+      life: 0.75,
+    });
   }
 
   const projectileHp = getEnemyProjectileHp(enemy);

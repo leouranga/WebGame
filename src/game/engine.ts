@@ -2,7 +2,7 @@ import { PLAYER_I_FRAMES, GAME_HEIGHT, GAME_WIDTH, GRAVITY, ORB_PULL_RADIUS, UPG
 import { createPlayer, getMageDefinition, MAGES } from '@/game/characters/mages';
 import { createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
-import { createProjectile, fireEnemyShot, firePlayerShot } from '@/game/spells/projectiles';
+import { createProjectile, fireEnemyShot, firePlayerShot, rollCritical } from '@/game/spells/projectiles';
 import { clamp, createTerrain, getGroundY, lerp } from '@/game/terrain';
 import type {
   Enemy,
@@ -16,6 +16,7 @@ import type {
   SoulOrb,
   QueuedFrictionShot,
   QueuedWispShot,
+  WispFollower,
   UpgradeCard,
   UpgradeId,
   Vec,
@@ -24,7 +25,8 @@ import { COMMON_UPGRADES, findUnlockedAscensions, getUpgradeCard, getUpgradeProg
 import { distance, normalize, pointInRect, rectsOverlap } from '@/game/utils';
 
 const addText = (state: GameState, value: string, pos: Vec, color: string) => {
-  if (/[A-Za-z]/.test(value)) return;
+  const normalized = value.trim().toLowerCase();
+  if (/[A-Za-z]/.test(value) && normalized !== 'miss') return;
   const text: FloatingText = {
     id: state.nextId++,
     pos: { ...pos },
@@ -52,6 +54,21 @@ const getThunderboltBaseDamage = (state: GameState) => {
 };
 
 const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThunderboltBaseDamage(state) * state.effects.thunderboltDamageMultiplier));
+const getThunderboltStyle = (state: GameState): 'thunder' | 'god' => (state.effects.godOfThunder ? 'god' : 'thunder');
+const getThunderboltColor = (state: GameState) => (state.effects.godOfThunder ? '#ef4444' : '#60a5fa');
+const EXORCIST_RADIUS = 84;
+
+const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'soul' | 'god' = 'thunder', from?: Vec, flashRadius?: number) => {
+  state.thunderStrikes.push({
+    id: state.nextId++,
+    from: from ?? { x: to.x + (Math.random() * 60 - 30), y: 20 },
+    to: { ...to },
+    life: 0.28,
+    maxLife: 0.28,
+    style,
+    flashRadius,
+  });
+};
 
 const createEffects = (): RunEffects => ({
   critChance: 0,
@@ -60,6 +77,7 @@ const createEffects = (): RunEffects => ({
   soulDropBonus: 0,
   projectileSizeMultiplier: 1,
   invulnMultiplier: 1,
+  cloakInvulnDuration: 0,
   fragmentationCount: 0,
   fragmentationDamageBonus: 0,
   fragmentationLifeMultiplier: 1,
@@ -75,6 +93,7 @@ const createEffects = (): RunEffects => ({
   thunderboltTimer: 2.5,
   thunderboltInterval: 3.2,
   thunderboltDamageMultiplier: 1,
+  godOfThunder: false,
   appraisalChoices: 0,
   barrierReady: false,
   barrierCooldown: 0,
@@ -128,12 +147,41 @@ const createEffects = (): RunEffects => ({
   airPeakY: 0,
   hoarder: false,
   attackCharges: 0,
+  jumpHoldTimer: 0,
+  jumpHoldMax: 0.2,
   streamerBeam: null,
 });
 
 const hasAscension = (state: GameState, id: string) => state.ascensions.some((entry) => entry.id === id);
 
 const hasActiveShopItem = (state: GameState, itemId: ShopItemId) => state.shopItems.some((item) => item.id === itemId && item.owned && item.active);
+
+const openAscensionNotice = (state: GameState, cards: UpgradeCard[]) => {
+  if (cards.length === 0) return;
+
+  const returnStatus = state.status === 'ascension' ? state.ascensionNotice.returnStatus : state.status;
+  const nextQueue = [...state.ascensionNotice.queue, ...cards];
+  const active = state.ascensionNotice.active ?? nextQueue.shift() ?? null;
+
+  state.ascensionNotice = {
+    active,
+    queue: nextQueue,
+    returnStatus,
+  };
+
+  if (state.ascensionNotice.active) state.status = 'ascension';
+};
+
+const closeAscensionNotice = (state: GameState) => {
+  if (state.ascensionNotice.queue.length > 0) {
+    state.ascensionNotice.active = state.ascensionNotice.queue.shift() ?? null;
+    state.status = 'ascension';
+    return;
+  }
+
+  state.ascensionNotice.active = null;
+  state.status = state.ascensionNotice.returnStatus;
+};
 
 const createOrb = (state: GameState, pos: Vec, amount: number, kind: 'soul' | 'heal') => {
   const orb: SoulOrb = {
@@ -169,6 +217,11 @@ const syncPlayerSize = (state: GameState, scale: number) => {
 const growPlayerFromHealthUpgrade = (state: GameState, amount = 0.05) => {
   const currentScale = state.player.width / state.player.baseWidth;
   syncPlayerSize(state, Math.min(2.8, currentScale + amount));
+};
+
+const getJumpHoldMax = (state: GameState) => {
+  const impulseLevels = state.upgradeCounts.impulse ?? 0;
+  return clamp(0.1 + impulseLevels * 0.025, 0.1, 0.3);
 };
 
 const applyMaxHealthUpgrade = (state: GameState, maxHpGain: number, healGain = maxHpGain) => {
@@ -219,7 +272,7 @@ const getAttackSpeedFactor = (state: GameState) => {
   const baseInterval = getMageDefinition(state.player.mageId).fireInterval || state.player.fireInterval || 1;
   return Math.max(0.85, Math.min(3.2, baseInterval / Math.max(0.06, getCurrentFireInterval(state))));
 };
-const getFrictionTravelThreshold = (state: GameState) => Math.max(22, 78 - Math.max(0, state.effects.frictionShots - 1) * 12);
+const getFrictionTravelThreshold = (state: GameState) => Math.max(56, 132 - Math.max(0, state.effects.frictionShots - 1) * 16);
 const getWaveSpawnCount = (waveNumber: number) => Math.max(2, 2 + (waveNumber - 1) * 2);
 
 const beginDeathScreen = (state: GameState) => {
@@ -230,6 +283,7 @@ const beginDeathScreen = (state: GameState) => {
   state.upgrades = [];
   state.queuedFrictionShots = [];
   state.queuedWispShots = [];
+  state.wispFollowers = [];
   addText(state, 'Run ended', { x: state.width / 2, y: 118 }, '#f8fafc');
 };
 
@@ -256,7 +310,9 @@ const damagePlayer = (state: GameState, rawAmount: number, attacker?: Enemy | Pr
 
   const amount = Math.max(1, Math.round(rawAmount * getCurrentDefenseMultiplier(state)));
   player.hp = Math.max(0, player.hp - amount);
-  player.invuln = PLAYER_I_FRAMES * state.effects.invulnMultiplier;
+  player.invuln = state.effects.cloakInvulnDuration > 0
+    ? state.effects.cloakInvulnDuration
+    : PLAYER_I_FRAMES * state.effects.invulnMultiplier;
   addText(state, `-${amount}`, { x: player.pos.x, y: player.pos.y - 28 }, '#f87171');
 
   if (attacker && 'hp' in attacker && state.effects.reflectDamage > 0) {
@@ -336,6 +392,32 @@ const killEnemy = (state: GameState, enemy: Enemy) => {
 };
 
 const getBleedTickInterval = (state: GameState) => 1 / Math.max(1, state.effects.bleedDamageMultiplier);
+
+const CRIT_DAMAGE_COLOR = '#facc15';
+const SUPER_CRIT_DAMAGE_COLOR = '#f472b6';
+const getForcedCritMultiplier = (state: GameState) => 1.5 + state.effects.critBonus;
+
+const resolveProjectileHit = (state: GameState, enemy: Enemy, projectile: Projectile) => {
+  let damage = Math.max(1, Math.round(projectile.damage));
+  let critKind = projectile.critKind ?? 'none';
+
+  if (hasAscension(state, 'marksman') && !enemy.marksmanCritConsumed) {
+    enemy.marksmanCritConsumed = true;
+    if (critKind === 'none') {
+      const baseDamage = Math.max(1, Math.round(projectile.baseDamage ?? projectile.damage));
+      damage = Math.max(1, Math.round(baseDamage * getForcedCritMultiplier(state)));
+      critKind = 'crit';
+    }
+  }
+
+  const color = critKind === 'super'
+    ? SUPER_CRIT_DAMAGE_COLOR
+    : critKind === 'crit'
+      ? CRIT_DAMAGE_COLOR
+      : projectile.color;
+
+  return { damage, color };
+};
 
 const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#ffffff', applyOnHitEffects = true) => {
   if (enemy.deathHandled) return;
@@ -457,12 +539,13 @@ const createState = (): GameState => {
     impacts: [],
     queuedFrictionShots: [],
     queuedWispShots: [],
+    wispFollowers: [],
     wave: {
       number: 1,
       toSpawn: getWaveSpawnCount(1),
       spawned: 0,
       cleared: 0,
-      spawnTimer: 0.55,
+      spawnTimer: 0.24,
     },
     fireTimer: 0.1,
     souls: 0,
@@ -485,6 +568,11 @@ const createState = (): GameState => {
     },
     pointer: { x: GAME_WIDTH * 0.7, y: GAME_HEIGHT * 0.45 },
     effects: createEffects(),
+    ascensionNotice: {
+      active: null,
+      queue: [],
+      returnStatus: 'playing',
+    },
   };
 };
 
@@ -520,7 +608,8 @@ const resetPerWaveEffects = (state: GameState) => {
   state.impacts = [];
   state.queuedFrictionShots = [];
   state.queuedWispShots = [];
-  state.effects.firstHitCritReady = hasAscension(state, 'marksman');
+  state.wispFollowers = [];
+  state.effects.firstHitCritReady = false;
   state.effects.freeRerollAvailable = state.effects.freeReroll;
   state.effects.airPeakY = state.player.pos.y;
   state.player.jumpsRemaining = Math.max(0, state.player.maxJumps - 1);
@@ -542,7 +631,7 @@ const startWave = (state: GameState, number: number) => {
     toSpawn: getWaveSpawnCount(number),
     spawned: 0,
     cleared: 0,
-    spawnTimer: 0.55,
+    spawnTimer: 0.24,
   };
   state.status = 'playing';
   state.fireTimer = 0.1;
@@ -558,6 +647,7 @@ const beginBetweenWave = (state: GameState) => {
   state.status = 'between';
   state.queuedFrictionShots = [];
   state.queuedWispShots = [];
+  state.wispFollowers = [];
   state.upgrades = pickUpgradeCards(state);
 };
 
@@ -582,6 +672,7 @@ const openShop = (state: GameState) => {
   state.soulOrbs = [];
   state.queuedFrictionShots = [];
   state.queuedWispShots = [];
+  state.wispFollowers = [];
 };
 
 const resetRun = (state: GameState) => {
@@ -609,7 +700,7 @@ export const startSelectedRun = (state: GameState) => {
 };
 
 const applyAscension = (state: GameState, card: UpgradeCard) => {
-  if (state.ascensions.some((entry) => entry.id === card.id)) return;
+  if (state.ascensions.some((entry) => entry.id === card.id)) return false;
   state.ascensions.push(card);
   addText(state, `${card.name} ascended`, { x: state.width / 2, y: 148 }, '#f59e0b');
 
@@ -667,16 +758,17 @@ const applyAscension = (state: GameState, card: UpgradeCard) => {
       state.effects.infiniteJump = true;
       break;
     case 'gnome':
-      state.effects.enemyMissChance = Math.max(state.effects.enemyMissChance, 0.33);
+      state.effects.enemyMissChance = Math.max(state.effects.enemyMissChance, 33);
       break;
     case 'godOfThunder':
+      state.effects.godOfThunder = true;
       state.effects.thunderboltDamageMultiplier *= 3;
       break;
     case 'hoarder':
       state.effects.hoarder = true;
       break;
     case 'marksman':
-      state.effects.firstHitCritReady = true;
+      state.effects.firstHitCritReady = false;
       break;
     case 'nerd':
       state.effects.randomCommonEachWave = true;
@@ -713,6 +805,8 @@ const applyAscension = (state: GameState, card: UpgradeCard) => {
     default:
       break;
   }
+
+  return true;
 };
 
 function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
@@ -759,7 +853,9 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.projectileSizeMultiplier *= 1.2;
       break;
     case 'cloak':
-      state.effects.invulnMultiplier += 0.1;
+      state.effects.cloakInvulnDuration = state.effects.cloakInvulnDuration > 0
+        ? state.effects.cloakInvulnDuration * 1.1
+        : 0.5;
       break;
     case 'fragmentation':
       state.effects.fragmentationCount = state.effects.fragmentationCount === 0 ? 3 : state.effects.fragmentationCount + 1;
@@ -830,9 +926,6 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
     case 'growthPlusPlus':
       applyMaxHealthUpgrade(state, 40, 40);
       break;
-    case 'immortal':
-      state.effects.reviveCharges += 1;
-      break;
     case 'leechPlus':
       state.effects.lifesteal += 0.09;
       break;
@@ -857,12 +950,16 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
   }
 
   const unlocked = findUnlockedAscensions(state);
-  unlocked.forEach((ascension) => applyAscension(state, ascension));
+  const newlyUnlockedAscensions = unlocked.filter((ascension) => applyAscension(state, ascension));
 
   state.upgrades = [];
   if (!silent) {
     addText(state, 'Upgrade taken', { x: state.width / 2, y: 118 }, '#fde68a');
     startWave(state, state.wave.number + 1);
+  }
+
+  if (newlyUnlockedAscensions.length > 0) {
+    openAscensionNotice(state, newlyUnlockedAscensions);
   }
 }
 
@@ -918,6 +1015,11 @@ export const handleActionKey = (state: GameState, key: string) => {
   if (state.status === 'paused') {
     if (key === 'Escape' || key === 'Enter') state.status = 'playing';
     if (key === 'Backspace' || key === 'm' || key === 'M') returnToMenu(state);
+    return;
+  }
+
+  if (state.status === 'ascension') {
+    if (key === 'Escape' || key === 'Enter' || key === ' ') closeAscensionNotice(state);
     return;
   }
 
@@ -1012,6 +1114,13 @@ export const handlePointerClick = (state: GameState, point: Vec) => {
 
     if (state.ui.menuRect && pointInRect(point, state.ui.menuRect)) {
       returnToMenu(state);
+    }
+    return;
+  }
+
+  if (state.status === 'ascension') {
+    if (state.ui.restartRect && pointInRect(point, state.ui.restartRect)) {
+      closeAscensionNotice(state);
     }
     return;
   }
@@ -1114,6 +1223,19 @@ const updatePlayer = (state: GameState, input: InputState, dt: number) => {
       player.jumpsRemaining = Math.max(0, player.jumpsRemaining - 1);
     }
     state.effects.airPeakY = player.pos.y;
+    state.effects.jumpHoldMax = getJumpHoldMax(state);
+    state.effects.jumpHoldTimer = state.effects.jumpHoldMax;
+  }
+
+  if (!input.jumpHeld && player.vel.y < 0 && state.effects.jumpHoldTimer > 0) {
+    player.vel.y = Math.max(player.vel.y * 0.18, 0);
+    state.effects.jumpHoldTimer = 0;
+  }
+
+  if (input.jumpHeld && state.effects.jumpHoldTimer > 0 && player.vel.y < 0) {
+    const holdStrength = 0.72 + Math.min(0.18, state.effects.jumpHoldMax * 0.6);
+    player.vel.y -= GRAVITY * holdStrength * dt;
+    state.effects.jumpHoldTimer = Math.max(0, state.effects.jumpHoldTimer - dt);
   }
 
   const previousFoot = player.pos.y + player.height / 2;
@@ -1127,11 +1249,13 @@ const updatePlayer = (state: GameState, input: InputState, dt: number) => {
   if (player.onGround && !input.jumpPressed) {
     nextY = nextGround - player.height / 2;
     player.vel.y = 0;
+    state.effects.jumpHoldTimer = 0;
   } else if (player.vel.y >= 0 && nextFoot >= nextGround && previousFoot <= Math.max(previousGround, nextGround) + 16) {
     nextY = nextGround - player.height / 2;
     player.vel.y = 0;
     player.onGround = true;
     player.jumpsRemaining = Math.max(0, player.maxJumps - 1);
+    state.effects.jumpHoldTimer = 0;
     if (wasAirborne) applyLandingEffects(state, Math.max(0, nextY - state.effects.airPeakY));
   } else {
     player.onGround = false;
@@ -1190,7 +1314,7 @@ const enemyTouchesPlayer = (state: GameState, enemy: Enemy) => {
     );
   }
 
-  return dx <= (player.width + enemy.width) * 0.56 && dy <= (player.height + enemy.height) * 0.62;
+  return dx <= (player.width + enemy.width) * 0.7 && dy <= (player.height + enemy.height) * 0.86;
 };
 
 const updateThunderbolts = (state: GameState) => {
@@ -1202,20 +1326,14 @@ const updateThunderbolts = (state: GameState) => {
       y: 20,
     };
     const damage = getThunderboltDamage(state);
-    state.thunderStrikes.push({
-      id: state.nextId++,
-      from: lineFrom,
-      to: target,
-      life: 0.28,
-      maxLife: 0.28,
-    });
+    spawnLightningStrike(state, target, getThunderboltStyle(state), lineFrom, 62);
     createProjectile(state, {
       pos: target,
       lineFrom,
       vel: { x: 0, y: 0 },
       radius: 2,
       damage,
-      color: '#60a5fa',
+      color: getThunderboltColor(state),
       life: 0.02,
       owner: 'player',
       behavior: 'thunder',
@@ -1224,6 +1342,78 @@ const updateThunderbolts = (state: GameState) => {
       aoeRadius: 0,
       homingStrength: 0,
     });
+  }
+};
+
+
+const getWispAnchor = (state: GameState, index: number): Vec => {
+  if (state.effects.enchanter) {
+    const spread = Math.max(0, state.effects.wisps - 1) * 7;
+    const startX = state.player.pos.x - spread * 0.5;
+    return {
+      x: startX + index * 14,
+      y: state.player.pos.y - state.player.height * 0.62 + Math.sin(state.tick * 0.003 + index * 0.8) * 2,
+    };
+  }
+
+  const count = Math.max(1, state.effects.wisps);
+  const angle = state.tick * 0.0022 + index * (Math.PI * 2 / count);
+  return {
+    x: state.player.pos.x + Math.cos(angle) * (22 + count * 2),
+    y: state.player.pos.y - 10 + Math.sin(angle) * 12,
+  };
+};
+
+const ensureWispFollowers = (state: GameState) => {
+  const targetCount = Math.max(0, state.effects.wisps);
+  while (state.wispFollowers.length < targetCount) {
+    const anchor = getWispAnchor(state, state.wispFollowers.length);
+    state.wispFollowers.push({
+      pos: { ...anchor },
+      vel: { x: 0, y: 0 },
+    });
+  }
+  if (state.wispFollowers.length > targetCount) {
+    state.wispFollowers.length = targetCount;
+  }
+};
+
+const updateWispFollowers = (state: GameState, dt: number) => {
+  if (state.effects.wisps <= 0) {
+    state.wispFollowers = [];
+    return;
+  }
+
+  ensureWispFollowers(state);
+  for (let i = 0; i < state.wispFollowers.length; i += 1) {
+    const follower = state.wispFollowers[i];
+    const anchor = getWispAnchor(state, i);
+
+    if (state.effects.enchanter) {
+      follower.pos.x = anchor.x;
+      follower.pos.y = anchor.y;
+      follower.vel.x = 0;
+      follower.vel.y = 0;
+      continue;
+    }
+
+    const toAnchor = { x: anchor.x - follower.pos.x, y: anchor.y - follower.pos.y };
+    const dist = Math.hypot(toAnchor.x, toAnchor.y);
+    const dir = dist > 0.001 ? { x: toAnchor.x / dist, y: toAnchor.y / dist } : { x: 0, y: 0 };
+    const accel = Math.min(960, (82 + dist * 3.6) * 3);
+    follower.vel.x += dir.x * accel * dt;
+    follower.vel.y += dir.y * accel * dt;
+    follower.vel.x *= 0.935;
+    follower.vel.y *= 0.935;
+    const maxSpeed = (108 + Math.min(122, dist * 0.5)) * 3;
+    const currentSpeed = Math.hypot(follower.vel.x, follower.vel.y);
+    if (currentSpeed > maxSpeed && currentSpeed > 0.001) {
+      const scale = maxSpeed / currentSpeed;
+      follower.vel.x *= scale;
+      follower.vel.y *= scale;
+    }
+    follower.pos.x += follower.vel.x * dt;
+    follower.pos.y += follower.vel.y * dt;
   }
 };
 
@@ -1242,19 +1432,24 @@ const releaseQueuedWispShots = (state: GameState, dt: number) => {
 
   for (const shot of readyShots) {
     const dir = normalize({ x: shot.target.x - shot.origin.x, y: shot.target.y - shot.origin.y });
+    const critRoll = rollCritical(state);
     createProjectile(state, {
       pos: { ...shot.origin },
       vel: { x: dir.x * shot.speed, y: dir.y * shot.speed },
       radius: 4,
-      damage: shot.damage,
+      damage: Math.max(1, Math.round(shot.damage * critRoll.multiplier)),
+      baseDamage: Math.max(1, Math.round(shot.damage)),
+      critKind: critRoll.kind,
       color: shot.color,
-      life: 1.85,
+      life: 6.5,
       owner: 'player',
       behavior: 'wisp',
       pierce: 0,
       hitIds: [],
       aoeRadius: 0,
       homingStrength: 0,
+      projectileHp: 1 + state.effects.projectileDurability,
+      projectileMaxHp: 1 + state.effects.projectileDurability,
     });
   }
 };
@@ -1278,11 +1473,11 @@ const updateWisps = (state: GameState, dt: number, input: InputState) => {
   const projectileSpeed = state.player.projectileSpeed * 0.55 * attackSpeedFactor;
   const damage = Math.max(1, Math.round(state.player.damage * 0.5));
 
+  ensureWispFollowers(state);
+
   for (let i = 0; i < state.effects.wisps; i += 1) {
-    const angle = state.effects.enchanter ? 0 : state.tick * 0.002 + i * (Math.PI * 2 / Math.max(1, state.effects.wisps));
-    const origin = state.effects.enchanter
-      ? { x: state.player.pos.x + state.player.facing * (14 + i * 4), y: state.player.pos.y - 10 }
-      : { x: state.player.pos.x + Math.cos(angle) * 16, y: state.player.pos.y - 10 + Math.sin(angle) * 10 };
+    const follower = state.wispFollowers[i];
+    const origin = follower ? { x: follower.pos.x, y: follower.pos.y } : getWispAnchor(state, i);
 
     const queuedShot: QueuedWispShot = {
       delay: i * shotSpacing,
@@ -1305,12 +1500,12 @@ const getAimBeamPoints = (state: GameState, input: InputState) => ({
 });
 
 const updateAimLaser = (state: GameState, input: InputState) => {
-  if (!state.effects.enchanter && !state.effects.streamer) return;
+  if (!state.effects.streamer) return;
   const { from, to } = getAimBeamPoints(state, input);
   state.effects.streamerBeam = {
     from,
     to,
-    timer: state.effects.enchanter ? 1 : 0.2,
+    timer: 0.2,
   };
 };
 
@@ -1318,7 +1513,7 @@ const updateStreamer = (state: GameState, dt: number, input: InputState) => {
   if (!state.effects.streamer) return;
 
   const { from, to } = getAimBeamPoints(state, input);
-  state.effects.streamerBeam = { from, to, timer: state.effects.enchanter ? 1 : 0.2 };
+  state.effects.streamerBeam = { from, to, timer: 0.2 };
 
   state.effects.streamerTimer -= dt;
   if (state.effects.streamerTimer > 0) return;
@@ -1351,6 +1546,7 @@ const updateEnemies = (state: GameState, dt: number) => {
     enemy.bodyHitCooldown = Math.max(0, enemy.bodyHitCooldown - dt);
     enemy.bleed = Math.max(0, enemy.bleed - dt);
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
+    enemy.spawnElapsed = Math.min(enemy.spawnDuration, enemy.spawnElapsed + dt);
 
     const bleedTickInterval = getBleedTickInterval(state);
     if (enemy.bleed > 0 && enemy.bleedStacks > 0) {
@@ -1365,34 +1561,65 @@ const updateEnemies = (state: GameState, dt: number) => {
       enemy.bleedTickTimer = bleedTickInterval;
     }
 
-    const desiredY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12;
-    const settleFactor = enemy.pos.y < desiredY - 80 ? 0.012 : 0.028;
-    enemy.pos.y = lerp(enemy.pos.y, desiredY, settleFactor);
+    const rangedDesiredY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12;
+    const rangedDescendGap = rangedDesiredY - enemy.pos.y;
+    const rangedSettleFactor = rangedDescendGap > 80 ? 0.012 : 0.028;
 
     const toPlayer = { x: player.pos.x - enemy.pos.x, y: player.pos.y - enemy.pos.y };
     const planarDistance = Math.hypot(toPlayer.x, toPlayer.y);
     const direction = normalize(toPlayer);
     const speedFactor = Math.max(0, 1 - enemy.slow);
+    let targetY = rangedDesiredY;
 
     if (enemy.isRanged) {
       const horizontal = player.pos.x - enemy.pos.x;
       const absHorizontal = Math.abs(horizontal);
-      if (absHorizontal < enemy.preferredRange - 28) {
+      if (absHorizontal < enemy.preferredRange - 34) {
         enemy.pos.x -= Math.sign(horizontal) * enemy.speed * speedFactor * dt;
-      } else if (absHorizontal > enemy.preferredRange + 18) {
+      } else if (absHorizontal > enemy.preferredRange + 24) {
         enemy.pos.x += Math.sign(horizontal) * enemy.speed * speedFactor * dt;
       }
 
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
+      targetY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12;
+      if (enemy.spawnElapsed < enemy.spawnDuration) {
+        const t = enemy.spawnElapsed / enemy.spawnDuration;
+        const eased = t * t * (3 - 2 * t);
+        enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
+      } else {
+        enemy.pos.y = lerp(enemy.pos.y, targetY, rangedSettleFactor);
+      }
       enemy.shootCooldown -= dt;
-      if (enemy.shootCooldown <= 0 && planarDistance < 520) {
+      if (enemy.shootCooldown <= 0 && planarDistance < 680) {
         fireEnemyShot(state, enemy);
         enemy.shootCooldown = enemy.shootRate + Math.random() * 0.35;
       }
     } else {
-      enemy.pos.x += direction.x * enemy.speed * speedFactor * dt;
-      const verticalChase = enemy.pos.y > desiredY - 26 ? direction.y * enemy.speed * 0.45 * speedFactor * dt : 0;
-      enemy.pos.y += verticalChase;
+      const horizontal = player.pos.x - enemy.pos.x;
+      const absHorizontal = Math.abs(horizontal);
+      const verticalGap = Math.abs((player.pos.y - 6) - enemy.pos.y);
+      const contactRange = (player.width + enemy.width) * 0.5;
+      const verticalSlowdown = verticalGap > enemy.height * 1.3 ? 0.5 : verticalGap > enemy.height * 0.8 ? 0.72 : 1;
+      const chaseSpeed = enemy.speed * 0.72 * speedFactor * verticalSlowdown;
+      const stickSpeed = enemy.speed * 0.18 * speedFactor * Math.max(0.58, verticalSlowdown);
+
+      if (absHorizontal > contactRange) {
+        enemy.pos.x += Math.sign(horizontal) * Math.min(absHorizontal - contactRange, chaseSpeed * dt);
+      } else if (absHorizontal > 2) {
+        enemy.pos.x += Math.sign(horizontal) * Math.min(absHorizontal, stickSpeed * dt);
+      }
+
+      const meleeGroundY = getGroundY(state.terrain, enemy.pos.x);
+      const meleeHoverBob = Math.sin(state.tick * 0.005 + enemy.hoverPhase) * Math.max(5, enemy.height * 0.14);
+      // Keep melee enemies floating a bit higher, but do not let vertical gaps make them dash unnaturally.
+      targetY = meleeGroundY - enemy.height * 0.98 + meleeHoverBob;
+      if (enemy.spawnElapsed < enemy.spawnDuration) {
+        const t = enemy.spawnElapsed / enemy.spawnDuration;
+        const eased = t * t * (3 - 2 * t);
+        enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
+      } else {
+        enemy.pos.y = lerp(enemy.pos.y, targetY, 0.075);
+      }
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
     }
 
@@ -1403,8 +1630,11 @@ const updateEnemies = (state: GameState, dt: number) => {
         enemy.bodyHitCooldown = 0.45;
       }
       if (!enemy.isRanged) {
-        const pushStrength = state.effects.bulldozer ? 26 : 10;
-        const push = normalize({ x: player.pos.x - enemy.pos.x, y: (player.pos.y - 6) - enemy.pos.y });
+        const pushStrength = state.effects.bulldozer ? 24 : 3.25;
+        const push = normalize({
+          x: player.pos.x - enemy.pos.x,
+          y: ((player.pos.y - 6) - enemy.pos.y) * (state.effects.bulldozer ? 0.6 : 0.35),
+        });
         enemy.pos.x -= push.x * pushStrength;
         enemy.pos.y -= push.y * pushStrength;
       }
@@ -1474,8 +1704,9 @@ const updateProjectiles = (state: GameState, dt: number) => {
       const from = projectile.lineFrom ?? { x: projectile.pos.x, y: 20 };
       const hitTarget = getThunderHitTarget(state, from, projectile.pos);
       if (hitTarget) {
-        damageEnemy(state, hitTarget, projectile.damage, projectile.color);
-        addImpact(state, hitTarget.pos, Math.max(18, hitTarget.width * 0.85), projectile.color, 0.22);
+        const hitResult = resolveProjectileHit(state, hitTarget, projectile);
+        damageEnemy(state, hitTarget, hitResult.damage, hitResult.color);
+        addImpact(state, hitTarget.pos, Math.max(18, hitTarget.width * 0.85), hitResult.color, 0.22);
       } else {
         addImpact(state, projectile.pos, 28, projectile.color, 0.18);
       }
@@ -1484,13 +1715,16 @@ const updateProjectiles = (state: GameState, dt: number) => {
     }
 
     if (projectile.behavior === 'blackhole') {
+      const chargeLevel = Math.max(0, state.upgradeCounts.charge ?? 0);
+      const whiteDwarfDamagePerSecond = Math.max(1, chargeLevel);
       for (const enemy of state.enemies) {
         const dist = distance(enemy.pos, projectile.pos);
         if (dist <= projectile.aoeRadius) {
           const pull = normalize({ x: projectile.pos.x - enemy.pos.x, y: projectile.pos.y - enemy.pos.y });
-          enemy.pos.x += pull.x * 60 * dt;
-          enemy.pos.y += pull.y * 50 * dt;
-          damageEnemy(state, enemy, projectile.damage * dt, '#a855f7');
+          const pullStrength = 105 * Math.max(0.35, 1 - dist / Math.max(1, projectile.aoeRadius));
+          enemy.pos.x += pull.x * pullStrength * dt;
+          enemy.pos.y += pull.y * pullStrength * 0.88 * dt;
+          damageEnemy(state, enemy, whiteDwarfDamagePerSecond * dt, '#a855f7');
         }
       }
       continue;
@@ -1520,6 +1754,13 @@ const updateProjectiles = (state: GameState, dt: number) => {
         player.width,
         player.height,
       )) {
+        if (state.effects.enemyMissChance > 0 && Math.random() * 100 < state.effects.enemyMissChance) {
+          addText(state, 'miss', { x: player.pos.x, y: player.pos.y - 34 }, '#e5e7eb');
+          addImpact(state, { x: projectile.pos.x, y: projectile.pos.y }, Math.max(8, projectile.radius * 1.4), '#e5e7eb', 0.12);
+          projectile.life = 0;
+          continue;
+        }
+
         if (player.invuln > 0 && state.effects.absorbent) healPlayer(state, 1);
         damagePlayer(state, projectile.damage, projectile);
         projectile.life = 0;
@@ -1565,10 +1806,11 @@ const updateProjectiles = (state: GameState, dt: number) => {
       if (!hit || projectile.hitIds.includes(enemy.id)) continue;
 
       projectile.hitIds.push(enemy.id);
-      damageEnemy(state, enemy, projectile.damage, projectile.color);
+      const hitResult = resolveProjectileHit(state, enemy, projectile);
+      damageEnemy(state, enemy, hitResult.damage, hitResult.color);
 
       if (projectile.behavior === 'explosive' || projectile.behavior === 'meteor' || projectile.behavior === 'friction' || projectile.behavior === 'fragment') {
-        explodeAt(state, { x: projectile.pos.x, y: projectile.pos.y }, projectile.aoeRadius, Math.max(1, Math.round(projectile.damage * 0.8)), projectile.color);
+        explodeAt(state, { x: projectile.pos.x, y: projectile.pos.y }, projectile.aoeRadius, Math.max(1, Math.round(hitResult.damage * 0.8)), hitResult.color);
       }
 
       if (projectile.pierce > 0) {
@@ -1601,23 +1843,50 @@ const updateProjectiles = (state: GameState, dt: number) => {
   state.projectiles = state.projectiles.filter((projectile) => projectile.life > 0);
 };
 
+const triggerExorcist = (state: GameState, pos: Vec) => {
+  const strikePos = { x: pos.x, y: pos.y };
+  spawnLightningStrike(state, strikePos, 'soul', { x: strikePos.x + (Math.random() * 48 - 24), y: 18 }, EXORCIST_RADIUS);
+  const damage = Math.max(3, Math.round(state.player.damage * 1.2));
+  explodeAt(state, strikePos, EXORCIST_RADIUS, damage, '#c084fc');
+  addImpact(state, strikePos, EXORCIST_RADIUS * 1.1, 'rgba(216,180,254,0.75)', 0.22);
+};
+
+const soulOrbTouchesPlayer = (state: GameState, orb: SoulOrb) => {
+  const dx = Math.abs(orb.pos.x - state.player.pos.x);
+  const dy = Math.abs(orb.pos.y - state.player.pos.y);
+  return dx <= state.player.width * 0.56 + orb.radius + 8 && dy <= state.player.height * 0.56 + orb.radius + 10;
+};
+
+const collectSoulOrb = (state: GameState, orb: SoulOrb) => {
+  const pickupPos = { x: orb.pos.x, y: orb.pos.y };
+  if (orb.kind === 'soul') {
+    state.souls += orb.value;
+    if (state.effects.soulBeam) triggerExorcist(state, pickupPos);
+    addText(state, `+${orb.value}`, { x: pickupPos.x, y: pickupPos.y - 16 }, '#c084fc');
+  } else {
+    healPlayer(state, orb.value);
+    if (state.effects.hoarder) state.effects.attackCharges += 1;
+  }
+  orb.life = 0;
+};
+
 const updateSoulOrbs = (state: GameState, dt: number) => {
   for (const orb of state.soulOrbs) {
     orb.life -= dt;
-    orb.vel.y += GRAVITY * 0.24 * dt;
+    orb.vel.y += GRAVITY * 0.55 * dt;
     const toPlayer = { x: state.player.pos.x - orb.pos.x, y: state.player.pos.y - orb.pos.y };
     const dist = Math.hypot(toPlayer.x, toPlayer.y);
 
     if (dist < ORB_PULL_RADIUS) {
       const pull = normalize(toPlayer);
-      orb.vel.x += pull.x * 600 * dt;
-      orb.vel.y += pull.y * 600 * dt;
+      orb.vel.x += pull.x * 1100 * dt;
+      orb.vel.y += pull.y * 1100 * dt;
     }
 
     orb.pos.x += orb.vel.x * dt;
     orb.pos.y += orb.vel.y * dt;
-    orb.vel.x *= 0.98;
-    orb.vel.y *= 0.98;
+    orb.vel.x *= 0.99;
+    orb.vel.y *= 0.99;
 
     const groundY = getGroundY(state.terrain, orb.pos.x) - orb.radius;
     if (orb.pos.y > groundY) {
@@ -1626,19 +1895,9 @@ const updateSoulOrbs = (state: GameState, dt: number) => {
       orb.vel.x *= 0.92;
     }
 
-    if (distance(orb.pos, state.player.pos) < 22) {
-      if (orb.kind === 'soul') {
-        state.souls += orb.value;
-        if (state.effects.soulBeam) {
-          const target = nearestEnemy(state, orb.pos, 420);
-          if (target) damageEnemy(state, target, Math.max(3, Math.round(state.player.damage * 1.2)), '#c084fc');
-        }
-        addText(state, `+${orb.value}`, { x: orb.pos.x, y: orb.pos.y - 16 }, '#c084fc');
-      } else {
-        healPlayer(state, orb.value);
-        if (state.effects.hoarder) state.effects.attackCharges += 1;
-      }
-      orb.life = 0;
+    if (soulOrbTouchesPlayer(state, orb) || distance(orb.pos, state.player.pos) < 40) {
+      collectSoulOrb(state, orb);
+      continue;
     }
   }
 
@@ -1686,16 +1945,17 @@ const updatePassiveEffects = (state: GameState, dt: number, input: InputState) =
     }
   }
 
+  updateWispFollowers(state, dt);
   updateWisps(state, dt, input);
   updateStreamer(state, dt, input);
   updateAimLaser(state, input);
   updateBurningMan(state, dt);
 
-  if (state.effects.streamerBeam && !state.effects.enchanter) {
+  if (state.effects.streamerBeam && !state.effects.streamer) {
     state.effects.streamerBeam.timer -= dt;
     if (state.effects.streamerBeam.timer <= 0) state.effects.streamerBeam = null;
   }
-  if (!state.effects.enchanter && !state.effects.streamer && state.effects.streamerBeam) {
+  if (!state.effects.streamer && state.effects.streamerBeam) {
     state.effects.streamerBeam = null;
   }
 
@@ -1713,7 +1973,7 @@ const updateWave = (state: GameState, dt: number) => {
   if (state.wave.spawned < state.wave.toSpawn && state.wave.spawnTimer <= 0) {
     state.enemies.push(createEnemy(state.nextId++, state.wave.number));
     state.wave.spawned += 1;
-    state.wave.spawnTimer = Math.max(0.4, 0.86 - state.wave.number * 0.012);
+    state.wave.spawnTimer = Math.max(0.12, 0.34 - state.wave.number * 0.006);
   }
 
   if (state.wave.spawned >= state.wave.toSpawn && state.enemies.length === 0) {
@@ -1726,7 +1986,7 @@ export const updateGameState = (state: GameState, input: InputState, dt: number)
   state.pointer = { ...input.mouse };
 
   if (state.status !== 'playing') {
-    if (state.status !== 'paused') updateTexts(state, dt);
+    if (state.status !== 'paused' && state.status !== 'ascension') updateTexts(state, dt);
     return;
   }
 

@@ -26,7 +26,7 @@ export const COMMON_UPGRADES: UpgradeCard[] = [
 export const UNCOMMON_UPGRADES: UpgradeCard[] = [
   card('catalystPlus', 'Catalyst+', 'Projectile Damage +4', 'uncommon', '✶', '#86efac'),
   card('charge', 'Charge', 'Projectile Size +20%', 'uncommon', '⬤', '#86efac'),
-  card('cloak', 'Cloak', 'Invulnerability after taking damage +10% duration', 'uncommon', '🛡', '#86efac'),
+  card('cloak', 'Cloak', 'After taking damage, become invulnerable for 0.5s. Each stack increases that time by 10%', 'uncommon', '🛡', '#86efac'),
   card('fragmentation', 'Fragmentation', 'Killed enemies release 3 small projectiles. Each stack adds +1 projectile and +1 damage.', 'uncommon', '✹', '#86efac'),
   card('friction', 'Friction', 'Running launches 1 explosive projectile upward more often', 'uncommon', '⇡', '#86efac'),
   card('growthPlus', 'Growth+', 'Max HP +20', 'uncommon', '❤', '#86efac'),
@@ -51,7 +51,6 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card('frictionPlus', 'Friction+', 'Running launches 1 explosive projectile upward much more often', 'epic', '⇈', '#c084fc'),
   card('focus', 'Focus', 'Gain attack speed every second you do not move', 'epic', '◈', '#c084fc'),
   card('growthPlusPlus', 'Growth++', 'Max HP +40', 'epic', '♥', '#c084fc'),
-  card('immortal', 'Immortal', '+1 Revive. Kill all enemies when reviving.', 'epic', '☥', '#c084fc', { maxStacks: 1 }),
   card('leechPlus', 'Leech+', 'Life Steal of 9% Damage', 'epic', '🜏', '#c084fc'),
   card('overheat', 'Overheat', 'Your body deals 40 damage on contact', 'epic', '☄', '#c084fc'),
   card('thunderboltPlus', 'Thunderbolt+', 'Calls 6 thunderbolts from the sky every few seconds for 50 base damage', 'epic', '⚡', '#c084fc'),
@@ -74,13 +73,13 @@ export const ASCENSIONS: UpgradeCard[] = [
   card('dealer', 'Dealer', 'You can reroll for free', 'ascension', '⟳', '#f59e0b', { sourceId: 'appraisal', threshold: 4 }),
   card('desperate', 'Desperate', 'Heal to full HP at the beginning of every wave', 'ascension', '✚', '#f59e0b', { sourceId: 'renew', threshold: 5 }),
   card('enchanter', 'Enchanter', 'Wisps stay near the staff and shoot where you aim', 'ascension', '✧', '#f59e0b', { sourceId: 'willOWisp', threshold: 4 }),
-  card('exorcist', 'Exorcist', 'Picking up a soul orb releases a soul beam', 'ascension', '☄', '#f59e0b', { sourceId: 'souls', threshold: 6 }),
+  card('exorcist', 'Exorcist', 'Picking up a soul orb calls a purple soul strike that damages all enemies in the area', 'ascension', '☄', '#f59e0b', { sourceId: 'souls', threshold: 6 }),
   card('freezer', 'Freezer', 'Enemies can now be slowed to 100% and may shatter', 'ascension', '❅', '#f59e0b', { sourceId: 'cold', threshold: 3 }),
   card('flyingSorcerer', 'Flying Sorcerer', 'You can jump as much as you want', 'ascension', '🕊', '#f59e0b', { sourceId: 'gush', threshold: 5 }),
   card('gnome', 'Gnome', 'Enemy projectiles have a 33% chance to miss', 'ascension', '◔', '#f59e0b', { sourceId: 'shrink', threshold: 5 }),
-  card('godOfThunder', 'God of Thunder', 'Thunderbolts deal 3x more damage', 'ascension', '⚡', '#f59e0b', { sourceId: 'thunderbolt', threshold: 10 }),
+  card('godOfThunder', 'God of Thunder', 'Thunderbolts deal 3x more damage and turn red', 'ascension', '⚡', '#f59e0b', { sourceId: 'thunderbolt', threshold: 10 }),
   card('hoarder', 'Hoarder', 'Healing orbs charge your next attack', 'ascension', '◎', '#f59e0b', { sourceId: 'orb', threshold: 5 }),
-  card('marksman', 'Marksman', 'Your first hit every wave is always critical', 'ascension', '⌖', '#f59e0b', { sourceId: 'eyesight', threshold: 6 }),
+  card('marksman', 'Marksman', 'The first hit on each monster is always critical', 'ascension', '⌖', '#f59e0b', { sourceId: 'eyesight', threshold: 6 }),
   card('nerd', 'Nerd', 'Receive a random common card every wave', 'ascension', '📗', '#f59e0b', { sourceId: 'tome', threshold: 4 }),
   card('pacMan', 'Pac-Man', 'Projectiles that eat enemy shots gain damage', 'ascension', '◉', '#f59e0b', { sourceId: 'stability', threshold: 5 }),
   card('plagueSpreader', 'Plague Spreader', 'Removes 1% HP from all enemies every second', 'ascension', '☣', '#f59e0b', { sourceId: 'regrowth', threshold: 5 }),
@@ -91,7 +90,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card('streamer', 'Streamer', 'Shoot a beam from your staff based on attack speed', 'ascension', '═', '#f59e0b', { sourceId: 'resonance', threshold: 8 }),
   card('tryhard', 'Tryhard', 'Does absolutely nothing', 'ascension', '☻', '#f59e0b', { sourceId: 'catalyst', threshold: 20 }),
   card('vampire', 'Vampire', 'Half of all your damage returns as HP', 'ascension', '🦇', '#f59e0b', { sourceId: 'leech', threshold: 12 }),
-  card('whiteDwarf', 'White Dwarf', 'Projectiles normalize in size and create black holes on impact', 'ascension', '●', '#f59e0b', { sourceId: 'charge', threshold: 5 }),
+  card('whiteDwarf', 'White Dwarf', 'Projectiles normalize in size and create black holes on impact that pull nearby monsters and deal 1 damage per second for each Charge level', 'ascension', '●', '#f59e0b', { sourceId: 'charge', threshold: 5 }),
 ];
 
 export const ALL_UPGRADES: UpgradeCard[] = [
@@ -161,10 +160,12 @@ const getUpgradePointValue = (upgrade: UpgradeCard, familyCards: UpgradeCard[]) 
   return 1;
 };
 
+const TEST_ASCENSION_THRESHOLD = 1;
+
 const getAscensionThreshold = (sourceId?: UpgradeId) => {
   const family = getUpgradeFamilyCards(sourceId);
   if (family.length === 0) return Number.POSITIVE_INFINITY;
-  return hasCommonOrUncommonVariant(family) ? 10 : 4;
+  return TEST_ASCENSION_THRESHOLD;
 };
 
 export const getAscensionStackCount = (state: GameState, sourceId?: UpgradeId) => {

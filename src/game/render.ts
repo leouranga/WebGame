@@ -14,6 +14,43 @@ const fillPanel = (ctx: CanvasRenderingContext2D, rect: Rect, fill: string, stro
   ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 };
 
+const withAlpha = (color: string, alpha: number) => {
+  const clampedAlpha = Math.max(0, Math.min(1, alpha));
+  const normalized = color.replace(/\s+/g, '');
+
+  if (normalized.startsWith('rgba(')) {
+    const match = normalized.match(/^rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/i);
+    if (match) {
+      return `rgba(${match[1]},${match[2]},${match[3]},${clampedAlpha})`;
+    }
+  }
+
+  if (normalized.startsWith('rgb(')) {
+    const match = normalized.match(/^rgb\((\d+),(\d+),(\d+)\)$/i);
+    if (match) {
+      return `rgba(${match[1]},${match[2]},${match[3]},${clampedAlpha})`;
+    }
+  }
+
+  if (normalized.startsWith('#')) {
+    const hex = normalized.slice(1);
+    const expanded = hex.length === 3
+      ? hex.split('').map((char) => char + char).join('')
+      : hex;
+
+    if (expanded.length === 6) {
+      const parsed = Number.parseInt(expanded, 16);
+      if (!Number.isNaN(parsed)) {
+        const r = (parsed >> 16) & 255;
+        const g = (parsed >> 8) & 255;
+        const b = parsed & 255;
+        return `rgba(${r},${g},${b},${clampedAlpha})`;
+      }
+    }
+  }
+
+  return color;
+};
 
 const drawCenteredLabel = (
   ctx: CanvasRenderingContext2D,
@@ -471,6 +508,25 @@ const drawStreamerBeam = (ctx: CanvasRenderingContext2D, state: GameState) => {
 const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => {
   for (const strike of state.thunderStrikes) {
     const alpha = Math.max(0, strike.life / strike.maxLife);
+    const soulStyle = strike.style === 'soul';
+    const godStyle = strike.style === 'god';
+    const outerStroke = soulStyle
+      ? `rgba(250,232,255,${0.98 * alpha})`
+      : godStyle
+        ? `rgba(254,226,226,${0.98 * alpha})`
+        : `rgba(224,242,254,${0.98 * alpha})`;
+    const innerStroke = soulStyle
+      ? `rgba(192,132,252,${0.92 * alpha})`
+      : godStyle
+        ? `rgba(239,68,68,${0.92 * alpha})`
+        : `rgba(96,165,250,${0.9 * alpha})`;
+    const branchStroke = soulStyle
+      ? `rgba(216,180,254,${0.62 * alpha})`
+      : godStyle
+        ? `rgba(248,113,113,${0.6 * alpha})`
+        : `rgba(147,197,253,${0.55 * alpha})`;
+    const shadowColor = soulStyle ? '#c084fc' : (godStyle ? '#ef4444' : '#93c5fd');
+    const flashRadius = strike.flashRadius ?? 62;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
 
@@ -486,17 +542,17 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
     }
     boltPoints[boltPoints.length - 1] = strike.to;
 
-    ctx.strokeStyle = `rgba(224,242,254,${0.98 * alpha})`;
-    ctx.lineWidth = 7;
-    ctx.shadowColor = '#93c5fd';
-    ctx.shadowBlur = 24;
+    ctx.strokeStyle = outerStroke;
+    ctx.lineWidth = soulStyle ? 8 : 7;
+    ctx.shadowColor = shadowColor;
+    ctx.shadowBlur = soulStyle ? 28 : 24;
     ctx.beginPath();
     ctx.moveTo(boltPoints[0].x, boltPoints[0].y);
     for (const point of boltPoints.slice(1)) ctx.lineTo(point.x, point.y);
     ctx.stroke();
 
-    ctx.strokeStyle = `rgba(96,165,250,${0.9 * alpha})`;
-    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = innerStroke;
+    ctx.lineWidth = soulStyle ? 4 : 3.5;
     ctx.beginPath();
     ctx.moveTo(boltPoints[0].x, boltPoints[0].y);
     for (const point of boltPoints.slice(1)) ctx.lineTo(point.x, point.y);
@@ -509,7 +565,7 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
         x: branchFrom.x + side * (10 + i * 1.5),
         y: branchFrom.y + 14,
       };
-      ctx.strokeStyle = `rgba(147,197,253,${0.55 * alpha})`;
+      ctx.strokeStyle = branchStroke;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(branchFrom.x, branchFrom.y);
@@ -517,14 +573,24 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
       ctx.stroke();
     }
 
-    const flash = ctx.createRadialGradient(strike.to.x, strike.to.y, 0, strike.to.x, strike.to.y, 62);
-    flash.addColorStop(0, `rgba(255,255,255,${0.5 * alpha})`);
-    flash.addColorStop(0.18, `rgba(147,197,253,${0.38 * alpha})`);
-    flash.addColorStop(0.52, `rgba(96,165,250,${0.2 * alpha})`);
+    const flash = ctx.createRadialGradient(strike.to.x, strike.to.y, 0, strike.to.x, strike.to.y, flashRadius);
+    if (soulStyle) {
+      flash.addColorStop(0, `rgba(255,255,255,${0.5 * alpha})`);
+      flash.addColorStop(0.18, `rgba(233,213,255,${0.42 * alpha})`);
+      flash.addColorStop(0.52, `rgba(192,132,252,${0.24 * alpha})`);
+    } else if (godStyle) {
+      flash.addColorStop(0, `rgba(255,255,255,${0.5 * alpha})`);
+      flash.addColorStop(0.18, `rgba(252,165,165,${0.4 * alpha})`);
+      flash.addColorStop(0.52, `rgba(239,68,68,${0.24 * alpha})`);
+    } else {
+      flash.addColorStop(0, `rgba(255,255,255,${0.5 * alpha})`);
+      flash.addColorStop(0.18, `rgba(147,197,253,${0.38 * alpha})`);
+      flash.addColorStop(0.52, `rgba(96,165,250,${0.2 * alpha})`);
+    }
     flash.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(strike.to.x, strike.to.y, 62, 0, Math.PI * 2);
+    ctx.arc(strike.to.x, strike.to.y, flashRadius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -534,22 +600,16 @@ const drawWillOWispOrbs = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (state.effects.wisps <= 0) return;
   const count = state.effects.wisps;
   for (let i = 0; i < count; i += 1) {
-    const angle = state.effects.enchanter
-      ? (-0.35 + i * 0.16)
-      : state.tick * 0.0022 + i * (Math.PI * 2 / Math.max(1, count));
-    const centerX = state.effects.enchanter
-      ? state.player.pos.x + state.player.facing * (18 + i * 6)
-      : state.player.pos.x + Math.cos(angle) * (22 + count * 2);
-    const centerY = state.effects.enchanter
-      ? state.player.pos.y - 18 + Math.sin(state.tick * 0.004 + i) * 5
-      : state.player.pos.y - 10 + Math.sin(angle) * 12;
+    const follower = state.wispFollowers[i];
+    const centerX = follower?.pos.x ?? state.player.pos.x;
+    const centerY = follower?.pos.y ?? (state.player.pos.y - 12);
     const radius = 6 + Math.min(3, count * 0.35);
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 3.2);
-    glow.addColorStop(0, 'rgba(244,114,182,0.95)');
-    glow.addColorStop(0.35, 'rgba(217,70,239,0.45)');
+    glow.addColorStop(0, 'rgba(244,114,182,0.82)');
+    glow.addColorStop(0.35, 'rgba(217,70,239,0.34)');
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
@@ -655,7 +715,7 @@ const drawImpacts = (ctx: CanvasRenderingContext2D, state: GameState) => {
 
     const ring = ctx.createRadialGradient(impact.pos.x, impact.pos.y, 0, impact.pos.x, impact.pos.y, radius);
     ring.addColorStop(0, `rgba(255,255,255,${0.26 * alpha})`);
-    ring.addColorStop(0.32, impact.color.replace('rgb', 'rgba').replace(')', `,${0.38 * alpha})`));
+    ring.addColorStop(0.32, withAlpha(impact.color, 0.38 * alpha));
     ring.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = ring;
     ctx.beginPath();
@@ -1020,6 +1080,45 @@ const drawDeathScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   drawCenteredLabel(ctx, 'Character Select', state.ui.menuRect, '22px Arial');
 };
 
+const drawAscensionScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
+  state.ui.shopCards = [];
+  state.ui.menuRect = null;
+  state.ui.restartRect = { x: state.width / 2 - 140, y: 444, w: 280, h: 58 };
+
+  const ascension = state.ascensionNotice.active;
+  if (!ascension) return;
+
+  ctx.fillStyle = 'rgba(2,6,23,0.64)';
+  ctx.fillRect(0, 0, state.width, state.height);
+
+  const panel = { x: state.width / 2 - 380, y: 128, w: 760, h: 390 };
+  fillPanel(ctx, panel, 'rgba(11,8,3,0.96)', 'rgba(245,158,11,0.65)');
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = '24px Arial';
+  ctx.fillText('Ascension Unlocked', state.width / 2, panel.y + 48);
+
+  drawUpgradeIcon(ctx, ascension.icon, state.width / 2 - 44, panel.y + 78, 88, ascension.color, 'framed');
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 38px Arial';
+  ctx.fillText(ascension.name, state.width / 2, panel.y + 206);
+
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '18px Arial';
+  wrapTextCentered(ctx, ascension.description, state.width / 2, panel.y + 244, 560, 26);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '16px Arial';
+  ctx.fillText('The run is paused until you continue.', state.width / 2, panel.y + 348);
+  ctx.restore();
+
+  fillPanel(ctx, state.ui.restartRect, 'rgba(146,64,14,0.94)', '#fbbf24');
+  drawCenteredLabel(ctx, 'Continue', state.ui.restartRect, '22px Arial');
+};
+
 const drawPauseScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   state.ui.shopCards = [];
   state.ui.restartRect = { x: state.width / 2 - 258, y: 356, w: 236, h: 60 };
@@ -1076,5 +1175,6 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (state.status === 'between') drawBetweenWave(ctx, state);
   if (state.status === 'shop') drawShopScreen(ctx, state);
   if (state.status === 'paused') drawPauseScreen(ctx, state);
+  if (state.status === 'ascension') drawAscensionScreen(ctx, state);
   if (state.status === 'death') drawDeathScreen(ctx, state);
 };

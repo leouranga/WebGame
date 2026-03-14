@@ -58,12 +58,12 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
       damage: 2,
       speed: 98,
       ranged: true,
-      preferredRange: 300,
+      preferredRange: 390,
       shootRate: 2.6,
       projectileSpeed: 205,
       projectileColor: '#f59e0b',
       bodyColor: '#fbbf24',
-      hoverHeight: 132,
+      hoverHeight: 300,
       soulDropChance: 0.16,
       soulDropAmount: 1,
       scoreValue: 12,
@@ -75,12 +75,12 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
       damage: 4,
       speed: 72,
       ranged: true,
-      preferredRange: 410,
+      preferredRange: 520,
       shootRate: 3.5,
       projectileSpeed: 235,
       projectileColor: '#fb7185',
       bodyColor: '#f472b6',
-      hoverHeight: 165,
+      hoverHeight: 340,
       soulDropChance: 0.28,
       soulDropAmount: 2,
       scoreValue: 20,
@@ -93,6 +93,8 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
   const healthBonus = getWaveHealthBonus(wave);
   const damageBonus = getWaveDamageBonus(wave);
   const speedScale = 1 + (1 - sizeScale) * 0.3;
+
+  const spawnDuration = 2.9 + Math.random() * 0.35;
 
   return {
     id: nextId,
@@ -112,7 +114,7 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     projectileSpeed: base.projectileSpeed,
     projectileColor: base.projectileColor,
     bodyColor: base.bodyColor,
-    hoverHeight: base.hoverHeight * (0.94 + Math.random() * 0.12),
+    hoverHeight: base.hoverHeight * (base.ranged ? 0.98 + Math.random() * 0.08 : 0.94 + Math.random() * 0.12),
     hoverPhase: Math.random() * Math.PI * 2,
     soulDropChance: base.soulDropChance,
     soulDropAmount: base.soulDropAmount,
@@ -124,5 +126,9 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     bleedTickTimer: 1,
     bodyHitCooldown: 0,
     deathHandled: false,
+    marksmanCritConsumed: false,
+    spawnStartY: startY,
+    spawnElapsed: 0,
+    spawnDuration,
   };
 };
