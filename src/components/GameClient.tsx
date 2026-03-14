@@ -15,6 +15,23 @@ const createInput = (): InputState => ({
   mouse: { x: GAME_WIDTH * 0.7, y: GAME_HEIGHT * 0.45 },
 });
 
+const pointInRect = (point: { x: number; y: number }, rect: { x: number; y: number; w: number; h: number } | null) => Boolean(
+  rect
+  && point.x >= rect.x
+  && point.x <= rect.x + rect.w
+  && point.y >= rect.y
+  && point.y <= rect.y + rect.h,
+);
+
+const isPointerOnInteractiveUi = (state: ReturnType<typeof createGameState>) => {
+  const { pointer, ui } = state;
+  if (ui.mageCards.some((entry) => pointInRect(pointer, entry.rect))) return true;
+  if (ui.upgradeCards.some((entry) => pointInRect(pointer, entry.rect))) return true;
+  if (ui.shopCards.some((entry) => pointInRect(pointer, entry.rect))) return true;
+  if (ui.hudUpgradeIcons.some((entry) => pointInRect(pointer, entry.rect))) return true;
+  return [ui.startRect, ui.shopRect, ui.nextWaveRect, ui.restartRect, ui.menuRect, ui.rerollRect].some((rect) => pointInRect(pointer, rect));
+};
+
 export function GameClient() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -90,6 +107,7 @@ export function GameClient() {
       updateGameState(state, input, dt);
       context.clearRect(0, 0, canvas.width, canvas.height);
       renderGame(context, state);
+      canvas.style.cursor = isPointerOnInteractiveUi(state) ? 'pointer' : 'default';
       input.jumpPressed = false;
       frame = requestAnimationFrame(loop);
     };
@@ -104,6 +122,7 @@ export function GameClient() {
       window.removeEventListener('mouseup', onMouseUp);
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('click', onClick);
+      canvas.style.cursor = 'default';
     };
   }, []);
 

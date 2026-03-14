@@ -191,7 +191,7 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
   createProjectile(state, {
     pos: { x: enemy.pos.x, y: enemy.pos.y },
     vel: { x: direction.x * enemy.projectileSpeed, y: direction.y * enemy.projectileSpeed },
-    radius: 6,
+    radius: enemy.projectileRadius,
     damage: enemy.damage,
     color: enemy.projectileColor,
     life: 3,

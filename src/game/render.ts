@@ -14,6 +14,41 @@ const fillPanel = (ctx: CanvasRenderingContext2D, rect: Rect, fill: string, stro
   ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 };
 
+const isRectHovered = (state: GameState, rect: Rect | null) => Boolean(rect && pointInRect(state.pointer, rect));
+
+const drawHoverPanel = (
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  fill: string,
+  stroke = 'rgba(148,163,184,0.35)',
+  hovered = false,
+  accent = stroke,
+) => {
+  const hoverLift = hovered ? 4 : 0;
+  const drawRect = hovered ? { x: rect.x, y: rect.y - hoverLift, w: rect.w, h: rect.h } : rect;
+
+  ctx.save();
+  if (hovered) {
+    ctx.shadowColor = withAlpha(accent, 0.42);
+    ctx.shadowBlur = 22;
+    ctx.shadowOffsetY = 8;
+  }
+  fillPanel(ctx, drawRect, fill, hovered ? accent : stroke);
+  ctx.restore();
+
+  if (hovered) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(drawRect.x + 2, drawRect.y + 2, drawRect.w - 4, Math.max(12, drawRect.h * 0.28));
+    ctx.strokeStyle = withAlpha(accent, 0.9);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(drawRect.x - 1, drawRect.y - 1, drawRect.w + 2, drawRect.h + 2);
+    ctx.restore();
+  }
+
+  return drawRect;
+};
+
 const withAlpha = (color: string, alpha: number) => {
   const clampedAlpha = Math.max(0, Math.min(1, alpha));
   const normalized = color.replace(/\s+/g, '');
@@ -113,6 +148,27 @@ const wrapTextCentered = (
 ) => {
   const lines = getWrappedLines(ctx, value, maxWidth);
   lines.forEach((line, index) => ctx.fillText(line, centerX, y + index * lineHeight));
+};
+
+const wrapTextCenteredClamped = (
+  ctx: CanvasRenderingContext2D,
+  value: string,
+  centerX: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number,
+) => {
+  const lines = getWrappedLines(ctx, value, maxWidth);
+  const visible = lines.slice(0, maxLines);
+  if (lines.length > maxLines && visible.length > 0) {
+    let last = visible[visible.length - 1];
+    while (last.length > 0 && ctx.measureText(`${last}…`).width > maxWidth) {
+      last = last.slice(0, -1).replace(/\s+$/, '');
+    }
+    visible[visible.length - 1] = `${last}…`;
+  }
+  visible.forEach((line, index) => ctx.fillText(line, centerX, y + index * lineHeight));
 };
 
 const drawUpgradeIcon = (
@@ -471,12 +527,24 @@ const drawEnemies = (ctx: CanvasRenderingContext2D, state: GameState) => {
   for (const enemy of state.enemies) {
     drawEnemySprite(ctx, enemy, state.tick);
 
-    const hpWidth = enemy.width + 12;
     const ratio = Math.max(0, enemy.hp / enemy.maxHp);
+    const isBoss = enemy.kind === 'brainboss';
+    const hpWidth = isBoss ? Math.max(220, enemy.width * 1.15) : enemy.width + 12;
+    const hpHeight = isBoss ? 10 : 5;
+    const barY = enemy.pos.y - enemy.height / 2 - (isBoss ? 26 : 16);
     ctx.fillStyle = 'rgba(15,23,42,0.88)';
-    ctx.fillRect(enemy.pos.x - hpWidth / 2, enemy.pos.y - enemy.height / 2 - 16, hpWidth, 5);
-    ctx.fillStyle = enemy.isRanged ? '#f472b6' : '#22c55e';
-    ctx.fillRect(enemy.pos.x - hpWidth / 2, enemy.pos.y - enemy.height / 2 - 16, hpWidth * ratio, 5);
+    ctx.fillRect(enemy.pos.x - hpWidth / 2, barY, hpWidth, hpHeight);
+    ctx.fillStyle = isBoss ? '#fb7185' : (enemy.isRanged ? '#f472b6' : '#22c55e');
+    ctx.fillRect(enemy.pos.x - hpWidth / 2, barY, hpWidth * ratio, hpHeight);
+
+    if (isBoss) {
+      ctx.save();
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#fce7f3';
+      ctx.textAlign = 'center';
+      ctx.fillText('Brain Boss', enemy.pos.x, barY - 6);
+      ctx.restore();
+    }
   }
 };
 
@@ -647,6 +715,33 @@ const drawProjectiles = (ctx: CanvasRenderingContext2D, state: GameState) => {
       ctx.strokeStyle = 'rgba(192,132,252,0.85)';
       ctx.lineWidth = 2;
       ctx.stroke();
+      continue;
+    }
+
+    if (projectile.behavior === 'enemyLaser') {
+      const length = 34;
+      const speed = Math.hypot(projectile.vel.x, projectile.vel.y) || 1;
+      const dirX = projectile.vel.x / speed;
+      const dirY = projectile.vel.y / speed;
+      const tailX = projectile.pos.x - dirX * length;
+      const tailY = projectile.pos.y - dirY * length;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.strokeStyle = 'rgba(251,113,133,0.95)';
+      ctx.lineWidth = 9;
+      ctx.shadowColor = '#fb7185';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(projectile.pos.x, projectile.pos.y);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(projectile.pos.x, projectile.pos.y);
+      ctx.stroke();
+      ctx.restore();
       continue;
     }
 
@@ -884,45 +979,57 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.fillText('Choose your mage', state.width / 2, 78);
   ctx.font = '17px Arial';
   ctx.fillStyle = '#cbd5e1';
-  ctx.fillText('Click a mage or press 1-5, then press Enter or Start', state.width / 2, 106);
+  ctx.fillText('Wind Mage starts unlocked. Other mages cost 50 souls.', state.width / 2, 106);
+  ctx.font = '15px Arial';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`Souls available: ${state.souls}`, state.width / 2, 128);
 
-  const cardWidth = 190;
-  const cardHeight = 208;
-  const gap = 18;
+  const cardWidth = 210;
+  const cardHeight = 198;
+  const gap = 16;
   const totalWidth = cardWidth * MAGES.length + gap * (MAGES.length - 1);
   const startX = (state.width - totalWidth) / 2;
-  const y = 148;
+  const y = 144;
 
   MAGES.forEach((mage, index) => {
     const rect = { x: startX + index * (cardWidth + gap), y, w: cardWidth, h: cardHeight };
     state.ui.mageCards.push({ id: mage.id, rect });
-    const selected = state.selectedMage === mage.id;
-    fillPanel(ctx, rect, selected ? 'rgba(30,41,59,0.96)' : 'rgba(8,15,28,0.82)', selected ? mage.color : 'rgba(148,163,184,0.35)');
+    const unlocked = state.unlockedMages[mage.id];
+    const selected = state.selectedMage === mage.id && unlocked;
+    const hovered = isRectHovered(state, rect);
+    const drawRect = drawHoverPanel(
+      ctx,
+      rect,
+      selected ? 'rgba(30,41,59,0.96)' : unlocked ? 'rgba(8,15,28,0.82)' : 'rgba(8,15,28,0.72)',
+      selected ? mage.color : unlocked ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.35)',
+      hovered,
+      unlocked ? mage.color : '#fca5a5',
+    );
 
-    drawMagePortrait(ctx, rect.x + rect.w / 2, rect.y + 58, 90, mage.color);
+    drawMagePortrait(ctx, drawRect.x + drawRect.w / 2, drawRect.y + 52, 82, unlocked ? mage.color : 'rgba(148,163,184,0.55)');
 
     ctx.fillStyle = '#f8fafc';
-    ctx.font = '20px Arial';
-    ctx.fillText(mage.name, rect.x + rect.w / 2, rect.y + 112);
-    ctx.font = '14px Arial';
-    ctx.fillStyle = mage.color;
-    ctx.fillText(`Damage ${mage.damage}`, rect.x + rect.w / 2, rect.y + 134);
+    ctx.font = '18px Arial';
+    ctx.fillText(mage.name, drawRect.x + drawRect.w / 2, drawRect.y + 104);
+    ctx.font = '13px Arial';
     ctx.fillStyle = '#cbd5e1';
-    ctx.fillText(mage.passive, rect.x + rect.w / 2, rect.y + 156);
-    wrapTextCentered(ctx, mage.summary, rect.x + rect.w / 2, rect.y + 178, rect.w - 26, 16);
+    wrapTextCenteredClamped(ctx, mage.passive, drawRect.x + drawRect.w / 2, drawRect.y + 132, drawRect.w - 28, 16, 3);
+    ctx.font = '13px Arial';
+    ctx.fillStyle = unlocked ? '#86efac' : '#fca5a5';
+    ctx.fillText(unlocked ? 'Unlocked' : `Locked · ${50} souls`, drawRect.x + drawRect.w / 2, drawRect.y + drawRect.h - 18);
   });
 
-  const buttonY = 394;
+  const buttonY = y + cardHeight + 28;
   const startRect = { x: state.width / 2 - 230, y: buttonY, w: 216, h: 56 };
   const shopRect = { x: state.width / 2 + 14, y: buttonY, w: 216, h: 56 };
   state.ui.startRect = startRect;
   state.ui.shopRect = shopRect;
 
-  fillPanel(ctx, startRect, 'rgba(91,33,182,0.92)', '#c4b5fd');
-  fillPanel(ctx, shopRect, 'rgba(15,23,42,0.94)', '#93c5fd');
+  const startDrawRect = drawHoverPanel(ctx, startRect, 'rgba(91,33,182,0.92)', '#c4b5fd', isRectHovered(state, startRect), '#c4b5fd');
+  const shopDrawRect = drawHoverPanel(ctx, shopRect, 'rgba(15,23,42,0.94)', '#93c5fd', isRectHovered(state, shopRect), '#93c5fd');
 
-  drawCenteredLabel(ctx, 'Start Run', startRect, '22px Arial');
-  drawCenteredLabel(ctx, 'Shop', shopRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Start Run', startDrawRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Shop', shopDrawRect, '22px Arial');
 };
 
 const drawBetweenWave = (ctx: CanvasRenderingContext2D, state: GameState) => {
@@ -966,36 +1073,43 @@ const drawBetweenWave = (ctx: CanvasRenderingContext2D, state: GameState) => {
     const row = Math.floor(index / columns);
     const rect = { x: startX + col * (cardWidth + gapX), y: startY + row * (cardHeight + gapY), w: cardWidth, h: cardHeight };
     state.ui.upgradeCards.push({ id: upgrade.id, rect });
-    fillPanel(ctx, rect, 'rgba(15,23,42,0.94)', upgrade.color);
+    const drawRect = drawHoverPanel(ctx, rect, 'rgba(15,23,42,0.94)', upgrade.color, isRectHovered(state, rect), upgrade.color);
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f8fafc';
     ctx.font = 'bold 15px Arial';
     const titleLines = getWrappedLines(ctx, upgrade.name, rect.w - 24).slice(0, 2);
     titleLines.forEach((line, lineIndex) => {
-      ctx.fillText(line, rect.x + rect.w / 2, rect.y + 22 + lineIndex * 17);
+      ctx.fillText(line, drawRect.x + drawRect.w / 2, drawRect.y + 22 + lineIndex * 17);
     });
 
     const iconSize = 34;
     const titleHeight = Math.max(1, titleLines.length) * 17;
-    const iconY = rect.y + 18 + titleHeight + 8;
-    drawUpgradeIcon(ctx, upgrade.icon, rect.x + rect.w / 2 - iconSize / 2, iconY, iconSize, upgrade.color);
+    const iconY = drawRect.y + 18 + titleHeight + 8;
+    drawUpgradeIcon(ctx, upgrade.icon, drawRect.x + drawRect.w / 2 - iconSize / 2, iconY, iconSize, upgrade.color);
 
     ctx.fillStyle = '#cbd5e1';
     ctx.font = '13px Arial';
-    wrapTextCentered(ctx, upgrade.description, rect.x + rect.w / 2, iconY + iconSize + 22, rect.w - 20, 17);
+    wrapTextCentered(ctx, upgrade.description, drawRect.x + drawRect.w / 2, iconY + iconSize + 22, drawRect.w - 20, 17);
   });
 
   const rerollRect = { x: state.width / 2 - 126, y: startY + contentHeight + 24, w: 252, h: 40 };
   state.ui.rerollRect = rerollRect;
   const rerollFree = Boolean(getActiveShopItem(state)?.id === 'dealerStaff') || state.effects.freeReroll || state.effects.freeRerollAvailable;
   const rerollEnabled = rerollFree || state.souls >= UPGRADE_REROLL_COST;
-  fillPanel(ctx, rerollRect, rerollEnabled ? 'rgba(30,41,59,0.92)' : 'rgba(30,41,59,0.55)', rerollEnabled ? '#93c5fd' : 'rgba(100,116,139,0.7)');
+  const rerollDrawRect = drawHoverPanel(
+    ctx,
+    rerollRect,
+    rerollEnabled ? 'rgba(30,41,59,0.92)' : 'rgba(30,41,59,0.55)',
+    rerollEnabled ? '#93c5fd' : 'rgba(100,116,139,0.7)',
+    rerollEnabled && isRectHovered(state, rerollRect),
+    '#93c5fd',
+  );
   ctx.textAlign = 'center';
   ctx.fillStyle = rerollEnabled ? '#e0f2fe' : '#94a3b8';
   ctx.font = '17px Arial';
   const rerollLabel = rerollFree ? 'Refresh upgrades · Free' : `Refresh upgrades · ${UPGRADE_REROLL_COST} souls`;
-  drawCenteredLabel(ctx, rerollLabel, rerollRect, '17px Arial', rerollEnabled ? '#e0f2fe' : '#94a3b8');
+  drawCenteredLabel(ctx, rerollLabel, rerollDrawRect, '17px Arial', rerollEnabled ? '#e0f2fe' : '#94a3b8');
 };
 
 const drawShopScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
@@ -1032,11 +1146,11 @@ const drawShopScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
     state.ui.shopCards.push({ id: item.id, rect });
     const fill = item.active ? 'rgba(22,58,45,0.94)' : item.owned ? 'rgba(25,45,68,0.92)' : 'rgba(15,23,42,0.95)';
     const stroke = item.active ? '#f8fafc' : item.color;
-    fillPanel(ctx, rect, fill, stroke);
+    const drawRect = drawHoverPanel(ctx, rect, fill, stroke, isRectHovered(state, rect), item.color);
     ctx.textAlign = 'center';
     ctx.fillStyle = item.active ? '#f8fafc' : '#e2e8f0';
     ctx.font = 'bold 20px Arial';
-    ctx.fillText(`${item.name} · ${item.cost} souls`, rect.x + rect.w / 2, rect.y + 28);
+    ctx.fillText(`${item.name} · ${item.cost} souls`, drawRect.x + drawRect.w / 2, drawRect.y + 28);
     ctx.fillStyle = item.active ? '#bbf7d0' : item.owned ? '#bfdbfe' : '#cbd5e1';
     ctx.font = '14px Arial';
     const statusText = item.active
@@ -1044,11 +1158,11 @@ const drawShopScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
       : item.owned
         ? 'Owned — click to equip this staff.'
         : item.description;
-    wrapTextCentered(ctx, statusText, rect.x + rect.w / 2, rect.y + 51, rect.w - 52, 17);
+    wrapTextCentered(ctx, statusText, drawRect.x + drawRect.w / 2, drawRect.y + 51, drawRect.w - 52, 17);
   });
 
-  fillPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd');
-  drawCenteredLabel(ctx, 'Back', state.ui.menuRect, '22px Arial');
+  const backDrawRect = drawHoverPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd', isRectHovered(state, state.ui.menuRect), '#93c5fd');
+  drawCenteredLabel(ctx, 'Back', backDrawRect, '22px Arial');
 };
 
 
@@ -1073,11 +1187,11 @@ const drawDeathScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.fillText(`Souls banked: ${state.souls}`, state.width / 2, panel.y + 130);
   ctx.fillText('Choose to restart with the same mage or go back to character select.', state.width / 2, panel.y + 170);
 
-  fillPanel(ctx, state.ui.restartRect, 'rgba(91,33,182,0.92)', '#c4b5fd');
-  fillPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd');
+  const restartDrawRect = drawHoverPanel(ctx, state.ui.restartRect, 'rgba(91,33,182,0.92)', '#c4b5fd', isRectHovered(state, state.ui.restartRect), '#c4b5fd');
+  const menuDrawRect = drawHoverPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd', isRectHovered(state, state.ui.menuRect), '#93c5fd');
 
-  drawCenteredLabel(ctx, 'Restart Run', state.ui.restartRect, '22px Arial');
-  drawCenteredLabel(ctx, 'Character Select', state.ui.menuRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Restart Run', restartDrawRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Character Select', menuDrawRect, '22px Arial');
 };
 
 const drawAscensionScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
@@ -1115,8 +1229,8 @@ const drawAscensionScreen = (ctx: CanvasRenderingContext2D, state: GameState) =>
   ctx.fillText('The run is paused until you continue.', state.width / 2, panel.y + 348);
   ctx.restore();
 
-  fillPanel(ctx, state.ui.restartRect, 'rgba(146,64,14,0.94)', '#fbbf24');
-  drawCenteredLabel(ctx, 'Continue', state.ui.restartRect, '22px Arial');
+  const continueDrawRect = drawHoverPanel(ctx, state.ui.restartRect, 'rgba(146,64,14,0.94)', '#fbbf24', isRectHovered(state, state.ui.restartRect), '#fbbf24');
+  drawCenteredLabel(ctx, 'Continue', continueDrawRect, '22px Arial');
 };
 
 const drawPauseScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
@@ -1139,11 +1253,11 @@ const drawPauseScreen = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.fillText('Return to the game or give up this run and go back to the main menu.', state.width / 2, panel.y + 118);
   ctx.fillText('Press ESC to continue.', state.width / 2, panel.y + 148);
 
-  fillPanel(ctx, state.ui.restartRect, 'rgba(91,33,182,0.92)', '#c4b5fd');
-  fillPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd');
+  const resumeDrawRect = drawHoverPanel(ctx, state.ui.restartRect, 'rgba(91,33,182,0.92)', '#c4b5fd', isRectHovered(state, state.ui.restartRect), '#c4b5fd');
+  const giveUpDrawRect = drawHoverPanel(ctx, state.ui.menuRect, 'rgba(15,23,42,0.94)', '#93c5fd', isRectHovered(state, state.ui.menuRect), '#93c5fd');
 
-  drawCenteredLabel(ctx, 'Return to Game', state.ui.restartRect, '22px Arial');
-  drawCenteredLabel(ctx, 'Give Up', state.ui.menuRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Return to Game', resumeDrawRect, '22px Arial');
+  drawCenteredLabel(ctx, 'Give Up', giveUpDrawRect, '22px Arial');
 };
 
 export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState) => {

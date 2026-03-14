@@ -1,9 +1,9 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Arcfall Stand',
-  description: 'A wave survival browser game inspired by Seraph\'s Last Stand.',
+  title: "Space Mage",
+  description: "A wave survival browser game.",
 };
 
 export default function RootLayout({

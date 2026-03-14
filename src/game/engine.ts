@@ -57,6 +57,57 @@ const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThu
 const getThunderboltStyle = (state: GameState): 'thunder' | 'god' => (state.effects.godOfThunder ? 'god' : 'thunder');
 const getThunderboltColor = (state: GameState) => (state.effects.godOfThunder ? '#ef4444' : '#60a5fa');
 const EXORCIST_RADIUS = 100;
+const MAGE_UNLOCK_COST = 50;
+const BRAIN_BOSS_BLAST_RADIUS = 140;
+
+const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
+  const dir = normalize({ x: state.player.pos.x - enemy.pos.x, y: state.player.pos.y - enemy.pos.y });
+  createProjectile(state, {
+    pos: { x: enemy.pos.x, y: enemy.pos.y + enemy.height * 0.06 },
+    vel: { x: dir.x * 120, y: dir.y * 120 },
+    radius: 18,
+    damage: 8,
+    color: '#f43f5e',
+    life: 7.5,
+    owner: 'enemy',
+    behavior: 'enemy',
+    pierce: 0,
+    hitIds: [],
+    aoeRadius: 0,
+    homingStrength: 0,
+    fromUpgrade: 'brainbossOrb',
+    projectileHp: 8,
+    projectileMaxHp: 8,
+  });
+};
+
+const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
+  const dir = normalize({ x: state.player.pos.x - enemy.pos.x, y: state.player.pos.y - enemy.pos.y });
+  createProjectile(state, {
+    pos: { x: enemy.pos.x, y: enemy.pos.y },
+    vel: { x: dir.x * 820, y: dir.y * 820 },
+    radius: 8,
+    damage: 2,
+    color: '#fb7185',
+    life: 1.4,
+    owner: 'enemy',
+    behavior: 'enemyLaser',
+    pierce: 0,
+    hitIds: [],
+    aoeRadius: 0,
+    homingStrength: 0,
+    fromUpgrade: 'brainbossLaser',
+    projectileHp: 99,
+    projectileMaxHp: 99,
+  });
+};
+
+const castBrainBossBlast = (state: GameState, enemy: Enemy) => {
+  addImpact(state, { x: enemy.pos.x, y: enemy.pos.y }, BRAIN_BOSS_BLAST_RADIUS, 'rgba(251,113,133,0.72)', 0.34);
+  if (distance(state.player.pos, enemy.pos) <= BRAIN_BOSS_BLAST_RADIUS + Math.max(state.player.width, state.player.height) * 0.35) {
+    damagePlayer(state, 5, enemy);
+  }
+};
 
 const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'soul' | 'god' = 'thunder', from?: Vec, flashRadius?: number) => {
   state.thunderStrikes.push({
@@ -280,7 +331,7 @@ const getAttackSpeedFactor = (state: GameState) => {
   return Math.max(0.85, Math.min(3.2, baseInterval / Math.max(0.06, getCurrentFireInterval(state))));
 };
 const getFrictionTravelThreshold = (state: GameState) => Math.max(56, 132 - Math.max(0, state.effects.frictionShots - 1) * 16);
-const getWaveSpawnCount = (waveNumber: number) => Math.max(2, 2 + (waveNumber - 1) * 2);
+const getWaveSpawnCount = (waveNumber: number) => ((waveNumber === 1 || waveNumber === 50) ? 1 : Math.max(2, 2 + (waveNumber - 1) * 2));
 
 const beginDeathScreen = (state: GameState) => {
   state.status = 'death';
@@ -536,6 +587,7 @@ const createState = (): GameState => {
     tick: 0,
     nextId: 1,
     selectedMage,
+    unlockedMages: { water: false, fire: false, wind: true, earth: false, void: false },
     terrain,
     player: createPlayer(terrain, selectedMage),
     projectiles: [],
@@ -662,11 +714,13 @@ const returnToMenu = (state: GameState) => {
   const selectedMage = state.selectedMage;
   const souls = state.souls;
   const shopItems = state.shopItems.map((item) => ({ ...item }));
+  const unlockedMages = { ...state.unlockedMages };
   const fresh = createState();
   Object.assign(state, fresh);
   state.selectedMage = selectedMage;
   state.souls = souls;
   state.shopItems = shopItems;
+  state.unlockedMages = unlockedMages;
   state.player = createPlayer(state.terrain, selectedMage);
   applyOwnedShopItemsToPlayer(state);
 };
@@ -686,17 +740,31 @@ const resetRun = (state: GameState) => {
   const selectedMage = state.selectedMage;
   const souls = state.souls;
   const shopItems = state.shopItems.map((item) => ({ ...item }));
+  const unlockedMages = { ...state.unlockedMages };
   const fresh = createState();
   Object.assign(state, fresh);
   state.selectedMage = selectedMage;
   state.souls = souls;
   state.shopItems = shopItems;
+  state.unlockedMages = unlockedMages;
   state.player = createPlayer(state.terrain, selectedMage);
   applyOwnedShopItemsToPlayer(state);
   startWave(state, 1);
 };
 
+
+const unlockMage = (state: GameState, mageId: MageId) => {
+  if (state.unlockedMages[mageId]) return true;
+  if (state.souls < MAGE_UNLOCK_COST) return false;
+  state.souls -= MAGE_UNLOCK_COST;
+  state.unlockedMages[mageId] = true;
+  const mage = getMageDefinition(mageId);
+  addText(state, `${mage.name} unlocked`, { x: state.width / 2, y: 150 }, mage.color);
+  return true;
+};
+
 export const selectMage = (state: GameState, mageId: MageId) => {
+  if (!state.unlockedMages[mageId]) return;
   state.selectedMage = mageId;
   state.player = createPlayer(state.terrain, mageId);
   applyOwnedShopItemsToPlayer(state);
@@ -1033,7 +1101,7 @@ export const handleActionKey = (state: GameState, key: string) => {
   if (state.status === 'menu') {
     if (['1', '2', '3', '4', '5'].includes(key)) {
       const mage = MAGES[Number(key) - 1];
-      if (mage) selectMage(state, mage.id);
+      if (mage && (state.unlockedMages[mage.id] || unlockMage(state, mage.id))) selectMage(state, mage.id);
       return;
     }
 
@@ -1069,7 +1137,7 @@ export const handlePointerClick = (state: GameState, point: Vec) => {
   if (state.status === 'menu') {
     for (const card of state.ui.mageCards) {
       if (pointInRect(point, card.rect)) {
-        selectMage(state, card.id);
+        if (state.unlockedMages[card.id] || unlockMage(state, card.id)) selectMage(state, card.id);
         return;
       }
     }
@@ -1355,11 +1423,15 @@ const updateThunderbolts = (state: GameState) => {
 
 const getWispAnchor = (state: GameState, index: number): Vec => {
   if (state.effects.enchanter) {
-    const spread = Math.max(0, state.effects.wisps - 1) * 7;
-    const startX = state.player.pos.x - spread * 0.5;
+    const handX = state.player.pos.x + state.player.width * 0.28 * state.player.facing;
+    const handY = state.player.pos.y - state.player.height * 0.06;
+    const count = Math.max(1, state.effects.wisps);
+    const stackOffset = (index - (count - 1) * 0.5);
+    const sideOffset = -state.player.facing * (10 + Math.abs(stackOffset) * 2);
+    const verticalOffset = -6 + stackOffset * 10;
     return {
-      x: startX + index * 14,
-      y: state.player.pos.y - state.player.height * 0.62 + Math.sin(state.tick * 0.003 + index * 0.8) * 2,
+      x: handX + sideOffset,
+      y: handY + verticalOffset + Math.sin(state.tick * 0.003 + index * 0.8) * 1.2,
     };
   }
 
@@ -1578,13 +1650,65 @@ const updateEnemies = (state: GameState, dt: number) => {
     const speedFactor = Math.max(0, 1 - enemy.slow);
     let targetY = rangedDesiredY;
 
+    if (enemy.kind === 'brainboss') {
+      const targetX = clamp(player.pos.x, enemy.width / 2 + 48, state.width - enemy.width / 2 - 48);
+      targetY = 132 + Math.sin(state.tick * 0.0026 + enemy.hoverPhase) * 24;
+      if (enemy.spawnElapsed < enemy.spawnDuration) {
+        const t = enemy.spawnElapsed / enemy.spawnDuration;
+        const eased = t * t * (3 - 2 * t);
+        enemy.pos.x = lerp(enemy.pos.x, targetX, 0.018);
+        enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
+      } else {
+        enemy.pos.x = lerp(enemy.pos.x, targetX, 0.028);
+        enemy.pos.y = lerp(enemy.pos.y, targetY, 0.03);
+
+        enemy.bossOrbCooldown -= dt;
+        enemy.bossLaserCooldown -= dt;
+        enemy.bossBlastCooldown -= dt;
+
+        if (enemy.bossOrbCooldown <= 0) {
+          fireBrainBossOrb(state, enemy);
+          enemy.bossOrbCooldown = 4.6 + Math.random() * 1.1;
+        }
+        if (enemy.bossLaserCooldown <= 0) {
+          fireBrainBossLaser(state, enemy);
+          enemy.bossLaserCooldown = 1.65 + Math.random() * 0.45;
+        }
+        if (enemy.bossBlastCooldown <= 0) {
+          castBrainBossBlast(state, enemy);
+          enemy.bossBlastCooldown = 5.4 + Math.random() * 1.2;
+        }
+      }
+
+      if (enemyTouchesPlayer(state, enemy)) {
+        damagePlayer(state, Math.max(2, enemy.damage), enemy);
+        if (state.effects.bodyDamage > 0 && enemy.bodyHitCooldown <= 0) {
+          damageEnemy(state, enemy, state.effects.bodyDamage, '#f97316');
+          enemy.bodyHitCooldown = 0.45;
+        }
+      }
+      continue;
+    }
+
     if (enemy.isRanged) {
-      const horizontal = player.pos.x - enemy.pos.x;
-      const absHorizontal = Math.abs(horizontal);
-      if (absHorizontal < enemy.preferredRange - 34) {
-        enemy.pos.x -= Math.sign(horizontal) * enemy.speed * speedFactor * dt;
-      } else if (absHorizontal > enemy.preferredRange + 24) {
-        enemy.pos.x += Math.sign(horizontal) * enemy.speed * speedFactor * dt;
+      if (enemy.cornerShooter) {
+        const cornerMargin = enemy.width * 0.65 + 40;
+        const anchorX = player.pos.x < state.width * 0.5
+          ? state.width - cornerMargin
+          : cornerMargin;
+        const toCorner = anchorX - enemy.pos.x;
+        const cornerStep = enemy.speed * 0.82 * speedFactor * dt;
+        if (Math.abs(toCorner) > 4) {
+          enemy.pos.x += Math.sign(toCorner) * Math.min(Math.abs(toCorner), cornerStep);
+        }
+      } else {
+        const horizontal = player.pos.x - enemy.pos.x;
+        const absHorizontal = Math.abs(horizontal);
+        if (absHorizontal < enemy.preferredRange - 34) {
+          enemy.pos.x -= Math.sign(horizontal) * enemy.speed * speedFactor * dt;
+        } else if (absHorizontal > enemy.preferredRange + 24) {
+          enemy.pos.x += Math.sign(horizontal) * enemy.speed * speedFactor * dt;
+        }
       }
 
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
@@ -1597,37 +1721,50 @@ const updateEnemies = (state: GameState, dt: number) => {
         enemy.pos.y = lerp(enemy.pos.y, targetY, rangedSettleFactor);
       }
       enemy.shootCooldown -= dt;
-      if (enemy.shootCooldown <= 0 && planarDistance < 680) {
+      const maxFireDistance = enemy.cornerShooter ? 1200 : 720;
+      if (enemy.shootCooldown <= 0 && planarDistance < maxFireDistance) {
         fireEnemyShot(state, enemy);
         enemy.shootCooldown = enemy.shootRate + Math.random() * 0.35;
       }
     } else {
-      const horizontal = player.pos.x - enemy.pos.x;
-      const absHorizontal = Math.abs(horizontal);
-      const verticalGap = Math.abs((player.pos.y - 6) - enemy.pos.y);
       const contactRange = (player.width + enemy.width) * 0.5;
-      const verticalSlowdown = verticalGap > enemy.height * 1.3 ? 0.5 : verticalGap > enemy.height * 0.8 ? 0.72 : 1;
-      const chaseSpeed = enemy.speed * 0.72 * speedFactor * verticalSlowdown;
-      const stickSpeed = enemy.speed * 0.18 * speedFactor * Math.max(0.58, verticalSlowdown);
-
-      if (absHorizontal > contactRange) {
-        enemy.pos.x += Math.sign(horizontal) * Math.min(absHorizontal - contactRange, chaseSpeed * dt);
-      } else if (absHorizontal > 2) {
-        enemy.pos.x += Math.sign(horizontal) * Math.min(absHorizontal, stickSpeed * dt);
-      }
-
-      const meleeGroundY = getGroundY(state.terrain, enemy.pos.x);
       const meleeHoverBob = Math.sin(state.tick * 0.005 + enemy.hoverPhase) * Math.max(5, enemy.height * 0.14);
-      // Keep melee enemies floating a bit higher, but do not let vertical gaps make them dash unnaturally.
-      targetY = meleeGroundY - enemy.height * 0.98 + meleeHoverBob;
+      const desiredTarget = {
+        x: player.pos.x,
+        y: player.pos.y - 6 + meleeHoverBob,
+      };
+      const toTarget = {
+        x: desiredTarget.x - enemy.pos.x,
+        y: desiredTarget.y - enemy.pos.y,
+      };
+      const targetDistance = Math.hypot(toTarget.x, toTarget.y);
+      const chaseDirection = targetDistance > 0.0001 ? {
+        x: toTarget.x / targetDistance,
+        y: toTarget.y / targetDistance,
+      } : { x: 0, y: 0 };
+      const desiredDistance = Math.max(10, contactRange * 0.48);
+      const tripledSpeed = enemy.speed * 3 * speedFactor;
+      const stickSpeed = enemy.speed * 1.35 * speedFactor;
+
       if (enemy.spawnElapsed < enemy.spawnDuration) {
+        targetY = desiredTarget.y;
         const t = enemy.spawnElapsed / enemy.spawnDuration;
         const eased = t * t * (3 - 2 * t);
         enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
-      } else {
-        enemy.pos.y = lerp(enemy.pos.y, targetY, 0.075);
+      } else if (targetDistance > desiredDistance) {
+        const moveStep = Math.min(targetDistance - desiredDistance, tripledSpeed * dt);
+        enemy.pos.x += chaseDirection.x * moveStep;
+        enemy.pos.y += chaseDirection.y * moveStep;
+      } else if (targetDistance > 1.5) {
+        const moveStep = Math.min(targetDistance, stickSpeed * dt);
+        enemy.pos.x += chaseDirection.x * moveStep;
+        enemy.pos.y += chaseDirection.y * moveStep;
       }
+
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
+      const ceiling = enemy.height / 2 + 12;
+      const floor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * 0.45;
+      enemy.pos.y = clamp(enemy.pos.y, ceiling, floor);
     }
 
     if (enemyTouchesPlayer(state, enemy)) {
@@ -1757,6 +1894,12 @@ const updateProjectiles = (state: GameState, dt: number) => {
       }
     }
 
+    if (projectile.owner === 'enemy' && projectile.fromUpgrade === 'brainbossOrb') {
+      const desired = normalize({ x: state.player.pos.x - projectile.pos.x, y: state.player.pos.y - projectile.pos.y });
+      projectile.vel.x = lerp(projectile.vel.x, desired.x * 120, dt * 1.8);
+      projectile.vel.y = lerp(projectile.vel.y, desired.y * 120, dt * 1.8);
+    }
+
     projectile.pos.x += projectile.vel.x * dt;
     projectile.pos.y += projectile.vel.y * dt;
 
@@ -1791,7 +1934,7 @@ const updateProjectiles = (state: GameState, dt: number) => {
     }
 
     for (const enemyProjectile of state.projectiles) {
-      if (enemyProjectile.owner !== 'enemy' || enemyProjectile.life <= 0 || enemyProjectile.id === projectile.id) continue;
+      if (enemyProjectile.owner !== 'enemy' || enemyProjectile.life <= 0 || enemyProjectile.id === projectile.id || enemyProjectile.behavior === 'enemyLaser') continue;
       if (!rectsOverlap(
         projectile.pos.x - projectile.radius,
         projectile.pos.y - projectile.radius,

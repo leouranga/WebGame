@@ -28,21 +28,9 @@ export type SpellBehavior =
   | 'friction'
   | 'blackhole'
   | 'wisp'
-  | 'thunder'
-  | 'enemyLaser';
+  | 'thunder';
 
-export type EnemyKind =
-  | 'wisp'
-  | 'crusher'
-  | 'spitter'
-  | 'oracle'
-  | 'mauler'
-  | 'stalker'
-  | 'behemoth'
-  | 'slinger'
-  | 'hexeye'
-  | 'starseer'
-  | 'brainboss';
+export type EnemyKind = 'wisp' | 'crusher' | 'spitter' | 'oracle';
 
 export type GameStatus = 'menu' | 'playing' | 'paused' | 'between' | 'death' | 'shop' | 'ascension';
 
@@ -144,12 +132,10 @@ export type Enemy = {
   shootCooldown: number;
   shootRate: number;
   projectileSpeed: number;
-  projectileRadius: number;
   projectileColor: string;
   bodyColor: string;
   hoverHeight: number;
   hoverPhase: number;
-  cornerShooter: boolean;
   soulDropChance: number;
   soulDropAmount: number;
   scoreValue: number;
@@ -164,9 +150,6 @@ export type Enemy = {
   spawnStartY: number;
   spawnElapsed: number;
   spawnDuration: number;
-  bossOrbCooldown: number;
-  bossLaserCooldown: number;
-  bossBlastCooldown: number;
 };
 
 export type OrbKind = 'soul' | 'heal';
@@ -371,7 +354,6 @@ export type GameState = {
   tick: number;
   nextId: number;
   selectedMage: MageId;
-  unlockedMages: Record<MageId, boolean>;
   terrain: TerrainPoint[];
   player: Player;
   projectiles: Projectile[];
