@@ -697,6 +697,199 @@ const drawWillOWispOrbs = (ctx: CanvasRenderingContext2D, state: GameState) => {
   }
 };
 
+
+const drawWindOrbProjectile = (ctx: CanvasRenderingContext2D, projectile: GameState['projectiles'][number], tick: number) => {
+  const radius = projectile.radius;
+  const rot = tick * 0.01;
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  const glow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * 4.2);
+  glow.addColorStop(0, 'rgba(255,255,255,0.88)');
+  glow.addColorStop(0.32, 'rgba(186,230,253,0.65)');
+  glow.addColorStop(0.68, 'rgba(125,211,252,0.28)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 4.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 3; i += 1) {
+    const angle = rot + i * (Math.PI * 2 / 3);
+    const orbitX = projectile.pos.x + Math.cos(angle) * radius * 1.15;
+    const orbitY = projectile.pos.y + Math.sin(angle) * radius * 0.75;
+    ctx.strokeStyle = i === 1 ? 'rgba(255,255,255,0.82)' : 'rgba(186,230,253,0.72)';
+    ctx.lineWidth = Math.max(1.6, radius * 0.24);
+    ctx.beginPath();
+    ctx.arc(orbitX, orbitY, radius * (0.7 + i * 0.05), angle + 0.55, angle + 2.2);
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 0.92, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(240,249,255,0.95)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(186,230,253,0.75)';
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawFireballProjectile = (ctx: CanvasRenderingContext2D, projectile: GameState['projectiles'][number], tick: number) => {
+  const radius = projectile.radius;
+  const rot = tick * 0.018;
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  const glow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * 4.8);
+  glow.addColorStop(0, 'rgba(255,245,157,0.95)');
+  glow.addColorStop(0.28, 'rgba(251,191,36,0.88)');
+  glow.addColorStop(0.58, 'rgba(249,115,22,0.55)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 4.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.translate(projectile.pos.x, projectile.pos.y);
+  ctx.rotate(rot);
+  for (let i = 0; i < 5; i += 1) {
+    ctx.rotate((Math.PI * 2) / 5);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(radius * 0.5, -radius * 0.45, radius * 0.15, -radius * 1.95);
+    ctx.quadraticCurveTo(radius * 0.9, -radius * 0.55, 0, 0);
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(251,146,60,0.72)' : 'rgba(239,68,68,0.78)';
+    ctx.fill();
+  }
+
+  const core = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 1.2);
+  core.addColorStop(0, 'rgba(255,251,235,1)');
+  core.addColorStop(0.32, 'rgba(253,224,71,0.95)');
+  core.addColorStop(0.68, 'rgba(249,115,22,0.92)');
+  core.addColorStop(1, 'rgba(220,38,38,0.8)');
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawWaterShardProjectile = (ctx: CanvasRenderingContext2D, projectile: GameState['projectiles'][number]) => {
+  const radius = projectile.radius;
+  const speed = Math.hypot(projectile.vel.x, projectile.vel.y) || 1;
+  const dirX = projectile.vel.x / speed;
+  const dirY = projectile.vel.y / speed;
+  const normalX = -dirY;
+  const normalY = dirX;
+  const frontX = projectile.pos.x + dirX * radius * 2.15;
+  const frontY = projectile.pos.y + dirY * radius * 2.15;
+  const rearX = projectile.pos.x - dirX * radius * 1.55;
+  const rearY = projectile.pos.y - dirY * radius * 1.55;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const glow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * 4.3);
+  glow.addColorStop(0, 'rgba(255,255,255,0.95)');
+  glow.addColorStop(0.3, 'rgba(125,211,252,0.82)');
+  glow.addColorStop(0.65, 'rgba(56,189,248,0.38)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 4.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(224,242,254,0.96)';
+  ctx.beginPath();
+  ctx.moveTo(frontX, frontY);
+  ctx.lineTo(projectile.pos.x + normalX * radius * 0.85, projectile.pos.y + normalY * radius * 0.85);
+  ctx.lineTo(rearX, rearY);
+  ctx.lineTo(projectile.pos.x - normalX * radius * 0.85, projectile.pos.y - normalY * radius * 0.85);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+  ctx.lineWidth = Math.max(1.4, radius * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(frontX, frontY);
+  ctx.lineTo(rearX, rearY);
+  ctx.stroke();
+  ctx.restore();
+};
+
+const drawFlowerProjectile = (ctx: CanvasRenderingContext2D, projectile: GameState['projectiles'][number], tick: number) => {
+  const radius = projectile.radius;
+  const rot = tick * 0.012;
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.translate(projectile.pos.x, projectile.pos.y);
+  ctx.rotate(rot);
+
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 4.6);
+  glow.addColorStop(0, 'rgba(255,255,255,0.65)');
+  glow.addColorStop(0.25, 'rgba(134,239,172,0.48)');
+  glow.addColorStop(0.65, 'rgba(74,222,128,0.24)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 4.6, 0, Math.PI * 2);
+  ctx.fill();
+
+  const petalColors = ['rgba(253,224,71,0.92)', 'rgba(251,146,60,0.9)', 'rgba(244,114,182,0.9)', 'rgba(192,132,252,0.9)'];
+  for (let i = 0; i < 4; i += 1) {
+    ctx.rotate(Math.PI / 2);
+    ctx.beginPath();
+    ctx.ellipse(0, -radius * 0.95, radius * 0.6, radius * 1.05, 0, 0, Math.PI * 2);
+    ctx.fillStyle = petalColors[i % petalColors.length];
+    ctx.fill();
+  }
+
+  ctx.fillStyle = 'rgba(34,197,94,0.88)';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.62, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(250,204,21,0.95)';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawFragmentProjectile = (ctx: CanvasRenderingContext2D, projectile: GameState['projectiles'][number], tick: number) => {
+  const radius = projectile.radius;
+  const palette = ['#fb7185', '#f59e0b', '#fde047', '#4ade80', '#38bdf8', '#c084fc'];
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  for (let i = 0; i < palette.length; i += 1) {
+    const angle = tick * 0.01 + i * (Math.PI * 2 / palette.length);
+    const px = projectile.pos.x + Math.cos(angle) * radius * 0.95;
+    const py = projectile.pos.y + Math.sin(angle) * radius * 0.95;
+    ctx.fillStyle = withAlpha(palette[i], 0.6);
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(1.2, radius * 0.5), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const glow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * 5.1);
+  glow.addColorStop(0, 'rgba(255,255,255,0.98)');
+  glow.addColorStop(0.18, 'rgba(253,224,71,0.95)');
+  glow.addColorStop(0.42, 'rgba(192,132,252,0.55)');
+  glow.addColorStop(0.72, 'rgba(56,189,248,0.32)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 5.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 0.95, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,250,220,0.95)';
+  ctx.fill();
+  ctx.restore();
+};
+
 const drawProjectiles = (ctx: CanvasRenderingContext2D, state: GameState) => {
   for (const projectile of state.projectiles) {
     if (projectile.behavior === 'blackhole') {
@@ -745,8 +938,32 @@ const drawProjectiles = (ctx: CanvasRenderingContext2D, state: GameState) => {
       continue;
     }
 
+    if (projectile.owner === 'player' && projectile.behavior === 'explosive') {
+      drawFireballProjectile(ctx, projectile, state.tick);
+      continue;
+    }
+
+    if (projectile.owner === 'player' && projectile.behavior === 'normal') {
+      drawWindOrbProjectile(ctx, projectile, state.tick);
+      continue;
+    }
+
+    if (projectile.owner === 'player' && projectile.behavior === 'pierce') {
+      drawWaterShardProjectile(ctx, projectile);
+      continue;
+    }
+
+    if (projectile.owner === 'player' && projectile.behavior === 'homing') {
+      drawFlowerProjectile(ctx, projectile, state.tick);
+      continue;
+    }
+
+    if (projectile.owner === 'player' && projectile.behavior === 'fragment') {
+      drawFragmentProjectile(ctx, projectile, state.tick);
+      continue;
+    }
+
     const radius = projectile.radius;
-    const speed = Math.hypot(projectile.vel.x, projectile.vel.y);
     const tailScale = projectile.behavior === 'meteor' ? 0.07 : projectile.behavior === 'enemy' ? 0.045 : projectile.behavior === 'fragment' ? 0.06 : 0.05;
     const tailX = projectile.pos.x - projectile.vel.x * tailScale;
     const tailY = projectile.pos.y - projectile.vel.y * tailScale;

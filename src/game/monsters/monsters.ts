@@ -28,8 +28,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   crusher: {
     width: 52,
     height: 52,
-    hp: 7,
-    damage: 1,
+    hp: 30,
+    damage: 3,
     speed: 62,
     ranged: false,
     preferredRange: 0,
@@ -48,8 +48,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   mauler: {
     width: 48,
     height: 48,
-    hp: 10,
-    damage: 2,
+    hp: 80,
+    damage: 15,
     speed: 74,
     ranged: false,
     preferredRange: 0,
@@ -68,8 +68,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   stalker: {
     width: 45,
     height: 45,
-    hp: 14,
-    damage: 3,
+    hp: 150,
+    damage: 25,
     speed: 86,
     ranged: false,
     preferredRange: 0,
@@ -88,8 +88,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   behemoth: {
     width: 70,
     height: 70,
-    hp: 22,
-    damage: 5,
+    hp: 220,
+    damage: 30,
     speed: 54,
     ranged: false,
     preferredRange: 0,
@@ -110,8 +110,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   wisp: {
     width: 38,
     height: 38,
-    hp: 4,
-    damage: 1,
+    hp: 15,
+    damage: 3,
     speed: 88,
     ranged: true,
     preferredRange: 340,
@@ -130,8 +130,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   spitter: {
     width: 42,
     height: 42,
-    hp: 6,
-    damage: 2,
+    hp: 50,
+    damage: 10,
     speed: 84,
     ranged: true,
     preferredRange: 410,
@@ -150,8 +150,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   slinger: {
     width: 46,
     height: 46,
-    hp: 8,
-    damage: 3,
+    hp: 120,
+    damage: 15,
     speed: 80,
     ranged: true,
     preferredRange: 455,
@@ -170,8 +170,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   oracle: {
     width: 50,
     height: 50,
-    hp: 11,
-    damage: 4,
+    hp: 180,
+    damage: 20,
     speed: 76,
     ranged: true,
     preferredRange: 520,
@@ -190,8 +190,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   hexeye: {
     width: 56,
     height: 56,
-    hp: 14,
-    damage: 5,
+    hp: 250,
+    damage: 30,
     speed: 72,
     ranged: true,
     preferredRange: 575,
@@ -210,8 +210,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   starseer: {
     width: 62,
     height: 62,
-    hp: 18,
-    damage: 6,
+    hp: 300,
+    damage: 50,
     speed: 68,
     ranged: true,
     preferredRange: 700,
@@ -291,8 +291,8 @@ const pickKind = (wave: number): EnemyKind => {
   return available[available.length - 1]?.[0] ?? "wisp";
 };
 
-const getWaveHealthBonus = (wave: number) => Math.floor(wave / 10) * 10;
-const getWaveDamageBonus = (wave: number) => Math.floor(wave / 5);
+const getWaveHealthBonus = (wave: number) => Math.floor(wave / 10) * 5;
+const getWaveDamageBonus = (wave: number) => Math.floor(wave / 10);
 
 export const createEnemy = (nextId: number, wave: number): Enemy => {
   const kind = wave === 50 ? "brainboss" : pickKind(wave);

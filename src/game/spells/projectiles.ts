@@ -71,7 +71,7 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
 
   if (player.behavior === 'thunder') {
     const baseMageDamage = getMageDefinition(player.mageId).damage;
-    const thunderBaseDamage = Math.max(1, Math.round((50 + Math.max(0, player.damage - baseMageDamage)) * nonCritDamageMultiplier * state.effects.thunderboltDamageMultiplier));
+    const thunderBaseDamage = Math.max(1, Math.round((26 + Math.max(0, player.damage - baseMageDamage)) * nonCritDamageMultiplier * state.effects.thunderboltDamageMultiplier));
     const thunderDamage = Math.max(1, Math.round(thunderBaseDamage * critRoll.multiplier));
     const targetX = clamp(aim.x, 24, state.width - 24);
     const target = {

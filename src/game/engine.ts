@@ -50,7 +50,7 @@ const addImpact = (state: GameState, pos: Vec, radius: number, color: string, li
 
 const getThunderboltBaseDamage = (state: GameState) => {
   const baseMageDamage = getMageDefinition(state.player.mageId).damage;
-  return 50 + Math.max(0, state.player.damage - baseMageDamage);
+  return 26 + Math.max(0, state.player.damage - baseMageDamage);
 };
 
 const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThunderboltBaseDamage(state) * state.effects.thunderboltDamageMultiplier));
@@ -493,8 +493,8 @@ const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#f
   }
 
   if (applyOnHitEffects && state.effects.wound) {
-    enemy.bleed = Math.max(enemy.bleed, 2);
-    enemy.bleedStacks = Math.min(4, Math.max(0, enemy.bleedStacks) + 1);
+    enemy.bleed = Number.POSITIVE_INFINITY;
+    enemy.bleedStacks = Math.min(6, Math.max(0, enemy.bleedStacks) + 1);
     enemy.bleedTickTimer = Math.min(enemy.bleedTickTimer, getBleedTickInterval(state));
   }
 
@@ -1738,33 +1738,51 @@ const updateEnemies = (state: GameState, dt: number) => {
         y: desiredTarget.y - enemy.pos.y,
       };
       const targetDistance = Math.hypot(toTarget.x, toTarget.y);
-      const chaseDirection = targetDistance > 0.0001 ? {
-        x: toTarget.x / targetDistance,
-        y: toTarget.y / targetDistance,
-      } : { x: 0, y: 0 };
       const desiredDistance = Math.max(10, contactRange * 0.48);
       const tripledSpeed = enemy.speed * 3 * speedFactor;
       const stickSpeed = enemy.speed * 1.35 * speedFactor;
+      const horizontalGap = desiredTarget.x - enemy.pos.x;
+      const verticalGap = desiredTarget.y - enemy.pos.y;
+      const verticalDeadzone = Math.max(18, enemy.height * 0.28);
+      const verticalChaseSpeed = enemy.speed * 1.45 * speedFactor;
+      const ceiling = enemy.height / 2 + 12;
+      const floor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * 0.45;
 
       if (enemy.spawnElapsed < enemy.spawnDuration) {
-        targetY = desiredTarget.y;
+        const spawnHoverY = clamp(
+          getGroundY(state.terrain, enemy.pos.x) - Math.min(enemy.hoverHeight * 0.58, 132) + meleeHoverBob,
+          ceiling,
+          floor,
+        );
         const t = enemy.spawnElapsed / enemy.spawnDuration;
         const eased = t * t * (3 - 2 * t);
-        enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
-      } else if (targetDistance > desiredDistance) {
-        const moveStep = Math.min(targetDistance - desiredDistance, tripledSpeed * dt);
-        enemy.pos.x += chaseDirection.x * moveStep;
-        enemy.pos.y += chaseDirection.y * moveStep;
-      } else if (targetDistance > 1.5) {
-        const moveStep = Math.min(targetDistance, stickSpeed * dt);
-        enemy.pos.x += chaseDirection.x * moveStep;
-        enemy.pos.y += chaseDirection.y * moveStep;
+        const introHorizontalStep = Math.min(Math.abs(horizontalGap), enemy.speed * 1.2 * speedFactor * dt);
+        if (Math.abs(horizontalGap) > 2) {
+          enemy.pos.x += Math.sign(horizontalGap) * introHorizontalStep;
+        }
+        enemy.pos.y = enemy.spawnStartY + (spawnHoverY - enemy.spawnStartY) * eased;
+      } else {
+        if (targetDistance > desiredDistance) {
+          const horizontalStep = Math.min(Math.abs(horizontalGap), tripledSpeed * dt);
+          if (Math.abs(horizontalGap) > 1.5) {
+            enemy.pos.x += Math.sign(horizontalGap) * horizontalStep;
+          }
+        } else if (Math.abs(horizontalGap) > 1.5) {
+          const horizontalStep = Math.min(Math.abs(horizontalGap), stickSpeed * dt);
+          enemy.pos.x += Math.sign(horizontalGap) * horizontalStep;
+        }
+
+        if (Math.abs(verticalGap) > verticalDeadzone) {
+          const verticalStep = Math.min(Math.abs(verticalGap) - verticalDeadzone, verticalChaseSpeed * dt);
+          enemy.pos.y += Math.sign(verticalGap) * verticalStep;
+        } else {
+          enemy.pos.y = lerp(enemy.pos.y, desiredTarget.y, 0.045);
+        }
       }
 
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
-      const ceiling = enemy.height / 2 + 12;
-      const floor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * 0.45;
-      enemy.pos.y = clamp(enemy.pos.y, ceiling, floor);
+      const postClampFloor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * 0.45;
+      enemy.pos.y = clamp(enemy.pos.y, ceiling, postClampFloor);
     }
 
     if (enemyTouchesPlayer(state, enemy)) {
