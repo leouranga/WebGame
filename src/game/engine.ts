@@ -57,7 +57,7 @@ const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThu
 const getThunderboltStyle = (state: GameState): 'thunder' | 'god' => (state.effects.godOfThunder ? 'god' : 'thunder');
 const getThunderboltColor = (state: GameState) => (state.effects.godOfThunder ? '#ef4444' : '#60a5fa');
 const EXORCIST_RADIUS = 100;
-const MAGE_UNLOCK_COST = 50;
+const MAGE_UNLOCK_COST = 25;
 const BRAIN_BOSS_BLAST_RADIUS = 140;
 
 const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {

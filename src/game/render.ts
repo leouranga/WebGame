@@ -1196,7 +1196,7 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.fillText('Choose your mage', state.width / 2, 78);
   ctx.font = '17px Arial';
   ctx.fillStyle = '#cbd5e1';
-  ctx.fillText('Wind Mage starts unlocked. Other mages cost 50 souls.', state.width / 2, 106);
+  ctx.fillText('Wind Mage starts unlocked. Other mages cost 25 souls.', state.width / 2, 106);
   ctx.font = '15px Arial';
   ctx.fillStyle = '#94a3b8';
   ctx.fillText(`Souls available: ${state.souls}`, state.width / 2, 128);
@@ -1233,7 +1233,7 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
     wrapTextCenteredClamped(ctx, mage.passive, drawRect.x + drawRect.w / 2, drawRect.y + 132, drawRect.w - 28, 16, 3);
     ctx.font = '13px Arial';
     ctx.fillStyle = unlocked ? '#86efac' : '#fca5a5';
-    ctx.fillText(unlocked ? 'Unlocked' : `Locked · ${50} souls`, drawRect.x + drawRect.w / 2, drawRect.y + drawRect.h - 18);
+    ctx.fillText(unlocked ? 'Unlocked' : `Locked · ${25} souls`, drawRect.x + drawRect.w / 2, drawRect.y + drawRect.h - 18);
   });
 
   const buttonY = y + cardHeight + 28;
