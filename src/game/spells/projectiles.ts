@@ -194,7 +194,7 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
     radius: enemy.projectileRadius,
     damage: enemy.damage,
     color: enemy.projectileColor,
-    life: 3,
+    life: 6,
     owner: 'enemy',
     behavior: 'enemy',
     pierce: 0,

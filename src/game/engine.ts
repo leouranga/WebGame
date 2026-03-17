@@ -1,4 +1,4 @@
-import { PLAYER_I_FRAMES, GAME_HEIGHT, GAME_WIDTH, GRAVITY, ORB_PULL_RADIUS, UPGRADE_REROLL_COST } from '@/game/constants';
+import { GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_PULL_RADIUS, PLAYER_I_FRAMES, UPGRADE_REROLL_COST } from '@/game/constants';
 import { createPlayer, getMageDefinition, MAGES } from '@/game/characters/mages';
 import { createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
@@ -68,7 +68,7 @@ const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
     radius: 18,
     damage: 8,
     color: '#f43f5e',
-    life: 7.5,
+    life: 15,
     owner: 'enemy',
     behavior: 'enemy',
     pierce: 0,
@@ -89,7 +89,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
     radius: 8,
     damage: 2,
     color: '#fb7185',
-    life: 1.4,
+    life: 2.8,
     owner: 'enemy',
     behavior: 'enemyLaser',
     pierce: 0,
@@ -407,7 +407,7 @@ const trySoulDrop = (state: GameState, enemy: Enemy) => {
   }
 
   if (Math.random() <= state.effects.healOrbChance) {
-    createOrb(state, enemy.pos, 2, 'heal');
+    createOrb(state, enemy.pos, 20, 'heal');
   }
 };
 
@@ -515,10 +515,18 @@ const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#f
   }
 };
 
-const explodeAt = (state: GameState, center: Vec, radius: number, damage: number, color: string) => {
+const explodeAt = (
+  state: GameState,
+  center: Vec,
+  radius: number,
+  damage: number,
+  color: string,
+  excludedEnemyIds: number[] = [],
+) => {
   addImpact(state, center, radius, color, 0.26);
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0 || enemy.deathHandled) continue;
+    if (excludedEnemyIds.includes(enemy.id)) continue;
     if (distance(enemy.pos, center) <= radius) {
       damageEnemy(state, enemy, damage, color);
     }
@@ -539,6 +547,50 @@ const nearestEnemy = (state: GameState, from: Vec, maxDistance = Number.POSITIVE
   }
 
   return best;
+};
+
+const clampEnemyToArena = (state: GameState, enemy: Enemy) => {
+  enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
+
+  const ceiling = enemy.height / 2 + 12;
+  const floorOffset = enemy.isRanged ? 0.42 : 0.45;
+  const floor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * floorOffset;
+  enemy.pos.y = clamp(enemy.pos.y, ceiling, floor);
+};
+
+const separateEnemies = (state: GameState) => {
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (let i = 0; i < state.enemies.length; i += 1) {
+      const a = state.enemies[i];
+      if (a.hp <= 0 || a.deathHandled || a.kind === 'brainboss') continue;
+
+      for (let j = i + 1; j < state.enemies.length; j += 1) {
+        const b = state.enemies[j];
+        if (b.hp <= 0 || b.deathHandled || b.kind === 'brainboss') continue;
+
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const minDistance = Math.max(20, (Math.max(a.width, a.height) + Math.max(b.width, b.height)) * 0.42);
+        const distanceSq = dx * dx + dy * dy;
+
+        if (distanceSq >= minDistance * minDistance) continue;
+
+        const distanceValue = Math.sqrt(distanceSq);
+        const nx = distanceValue > 0.0001 ? dx / distanceValue : ((a.id + b.id) % 2 === 0 ? 1 : -1);
+        const ny = distanceValue > 0.0001 ? dy / distanceValue : 0;
+        const overlap = minDistance - Math.max(distanceValue, 0.001);
+        const push = overlap * 0.52;
+
+        a.pos.x -= nx * push;
+        a.pos.y -= ny * push;
+        b.pos.x += nx * push;
+        b.pos.y += ny * push;
+
+        clampEnemyToArena(state, a);
+        clampEnemyToArena(state, b);
+      }
+    }
+  }
 };
 
 
@@ -1668,15 +1720,15 @@ const updateEnemies = (state: GameState, dt: number) => {
 
         if (enemy.bossOrbCooldown <= 0) {
           fireBrainBossOrb(state, enemy);
-          enemy.bossOrbCooldown = 4.6 + Math.random() * 1.1;
+          enemy.bossOrbCooldown = (4.6 + Math.random() * 1.1) / MONSTER_ATTACK_SPEED_MULTIPLIER;
         }
         if (enemy.bossLaserCooldown <= 0) {
           fireBrainBossLaser(state, enemy);
-          enemy.bossLaserCooldown = 1.65 + Math.random() * 0.45;
+          enemy.bossLaserCooldown = (1.65 + Math.random() * 0.45) / MONSTER_ATTACK_SPEED_MULTIPLIER;
         }
         if (enemy.bossBlastCooldown <= 0) {
           castBrainBossBlast(state, enemy);
-          enemy.bossBlastCooldown = 5.4 + Math.random() * 1.2;
+          enemy.bossBlastCooldown = (5.4 + Math.random() * 1.2) / MONSTER_ATTACK_SPEED_MULTIPLIER;
         }
       }
 
@@ -1702,29 +1754,42 @@ const updateEnemies = (state: GameState, dt: number) => {
           enemy.pos.x += Math.sign(toCorner) * Math.min(Math.abs(toCorner), cornerStep);
         }
       } else {
-        const horizontal = player.pos.x - enemy.pos.x;
-        const absHorizontal = Math.abs(horizontal);
-        if (absHorizontal < enemy.preferredRange - 34) {
-          enemy.pos.x -= Math.sign(horizontal) * enemy.speed * speedFactor * dt;
-        } else if (absHorizontal > enemy.preferredRange + 24) {
-          enemy.pos.x += Math.sign(horizontal) * enemy.speed * speedFactor * dt;
+        const orbitDirection = enemy.id % 2 === 0 ? 1 : -1;
+        const rangeOffset = Math.sin(state.tick * 0.0022 + enemy.hoverPhase) * 120;
+        const strafeOffset = Math.cos(state.tick * 0.0016 + enemy.hoverPhase * 1.7) * 95 * orbitDirection;
+        const desiredRange = enemy.preferredRange + rangeOffset;
+        const desiredX = clamp(
+          player.pos.x - direction.x * desiredRange + strafeOffset,
+          enemy.width / 2 + 10,
+          state.width - enemy.width / 2 - 10,
+        );
+        const horizontalGap = desiredX - enemy.pos.x;
+        const horizontalStep = Math.min(Math.abs(horizontalGap), enemy.speed * 1.18 * speedFactor * dt);
+        if (Math.abs(horizontalGap) > 1.5) {
+          enemy.pos.x += Math.sign(horizontalGap) * horizontalStep;
         }
       }
 
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
-      targetY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12;
+      const terrainHoverY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight;
+      const verticalRoam = Math.sin(state.tick * 0.002 + enemy.hoverPhase * 1.6) * 46
+        + Math.cos(state.tick * 0.0013 + enemy.id * 0.37) * 24;
+      targetY = terrainHoverY + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12 + verticalRoam;
+      const rangedCeiling = enemy.height / 2 + 12;
+      const rangedFloor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * 0.42;
+      targetY = clamp(targetY, rangedCeiling, rangedFloor);
       if (enemy.spawnElapsed < enemy.spawnDuration) {
         const t = enemy.spawnElapsed / enemy.spawnDuration;
         const eased = t * t * (3 - 2 * t);
         enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
       } else {
-        enemy.pos.y = lerp(enemy.pos.y, targetY, rangedSettleFactor);
+        enemy.pos.y = lerp(enemy.pos.y, targetY, Math.max(0.04, rangedSettleFactor + 0.02));
       }
       enemy.shootCooldown -= dt;
-      const maxFireDistance = enemy.cornerShooter ? 1200 : 720;
+      const maxFireDistance = enemy.cornerShooter ? 1400 : Math.max(980, enemy.preferredRange + 320);
       if (enemy.shootCooldown <= 0 && planarDistance < maxFireDistance) {
         fireEnemyShot(state, enemy);
-        enemy.shootCooldown = enemy.shootRate + Math.random() * 0.35;
+        enemy.shootCooldown = (enemy.shootRate + Math.random() * 0.35) / MONSTER_ATTACK_SPEED_MULTIPLIER;
       }
     } else {
       const contactRange = (player.width + enemy.width) * 0.5;
@@ -1802,6 +1867,8 @@ const updateEnemies = (state: GameState, dt: number) => {
       }
     }
   }
+
+  separateEnemies(state);
 
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0 && !enemy.deathHandled) killEnemy(state, enemy);
@@ -1988,7 +2055,16 @@ const updateProjectiles = (state: GameState, dt: number) => {
       const hitResult = resolveProjectileHit(state, enemy, projectile);
       damageEnemy(state, enemy, hitResult.damage, hitResult.color);
 
-      if (projectile.behavior === 'explosive' || projectile.behavior === 'meteor' || projectile.behavior === 'friction' || projectile.behavior === 'fragment') {
+      if (projectile.behavior === 'explosive') {
+        explodeAt(
+          state,
+          { x: enemy.pos.x, y: enemy.pos.y },
+          projectile.aoeRadius,
+          Math.max(1, Math.round(hitResult.damage * 0.3)),
+          hitResult.color,
+          [enemy.id],
+        );
+      } else if (projectile.behavior === 'meteor' || projectile.behavior === 'friction' || projectile.behavior === 'fragment') {
         explodeAt(state, { x: projectile.pos.x, y: projectile.pos.y }, projectile.aoeRadius, Math.max(1, Math.round(hitResult.damage * 0.8)), hitResult.color);
       }
 

@@ -542,7 +542,7 @@ const drawEnemies = (ctx: CanvasRenderingContext2D, state: GameState) => {
       ctx.font = '12px Arial';
       ctx.fillStyle = '#fce7f3';
       ctx.textAlign = 'center';
-      ctx.fillText('Brain Boss', enemy.pos.x, barY - 6);
+      ctx.fillText('The Brain', enemy.pos.x, barY - 6);
       ctx.restore();
     }
   }

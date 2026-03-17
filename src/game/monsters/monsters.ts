@@ -1,4 +1,4 @@
-import { GAME_WIDTH } from "@/game/constants";
+import { GAME_WIDTH, MONSTER_ATTACK_SPEED_MULTIPLIER } from "@/game/constants";
 import type { Enemy, EnemyKind } from "@/game/types";
 
 type EnemyBase = {
@@ -48,7 +48,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   mauler: {
     width: 48,
     height: 48,
-    hp: 80,
+    hp: 100,
     damage: 15,
     speed: 74,
     ranged: false,
@@ -68,8 +68,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   stalker: {
     width: 45,
     height: 45,
-    hp: 150,
-    damage: 25,
+    hp: 250,
+    damage: 40,
     speed: 86,
     ranged: false,
     preferredRange: 0,
@@ -88,8 +88,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   behemoth: {
     width: 70,
     height: 70,
-    hp: 220,
-    damage: 30,
+    hp: 600,
+    damage: 60,
     speed: 54,
     ranged: false,
     preferredRange: 0,
@@ -130,8 +130,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   spitter: {
     width: 42,
     height: 42,
-    hp: 50,
-    damage: 10,
+    hp: 100,
+    damage: 15,
     speed: 84,
     ranged: true,
     preferredRange: 410,
@@ -150,8 +150,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   slinger: {
     width: 46,
     height: 46,
-    hp: 120,
-    damage: 15,
+    hp: 200,
+    damage: 25,
     speed: 80,
     ranged: true,
     preferredRange: 455,
@@ -170,8 +170,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   oracle: {
     width: 50,
     height: 50,
-    hp: 180,
-    damage: 20,
+    hp: 300,
+    damage: 30,
     speed: 76,
     ranged: true,
     preferredRange: 520,
@@ -190,8 +190,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   hexeye: {
     width: 56,
     height: 56,
-    hp: 250,
-    damage: 30,
+    hp: 500,
+    damage: 35,
     speed: 72,
     ranged: true,
     preferredRange: 575,
@@ -210,8 +210,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   starseer: {
     width: 62,
     height: 62,
-    hp: 300,
-    damage: 50,
+    hp: 700,
+    damage: 70,
     speed: 68,
     ranged: true,
     preferredRange: 700,
@@ -232,8 +232,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   brainboss: {
     width: 168,
     height: 142,
-    hp: 2200,
-    damage: 8,
+    hp: 3500,
+    damage: 100,
     speed: 68,
     ranged: true,
     preferredRange: 0,
@@ -322,18 +322,22 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     hp: Math.ceil(base.hp + healthBonus),
     maxHp: Math.ceil(base.hp + healthBonus),
     damage: base.damage + damageBonus,
-    speed: Math.round(base.speed * speedScale),
+    speed: Math.round(base.speed * speedScale * (base.ranged ? 1 : 0.7)),
     isRanged: base.ranged,
     preferredRange:
-      base.preferredRange +
+      base.preferredRange *
+        (base.ranged && !base.cornerShooter && kind !== "brainboss"
+          ? 1.24
+          : 1) +
       (base.ranged && !base.cornerShooter && kind !== "brainboss"
-        ? Math.random() * 36
+        ? Math.random() * 72
         : 0),
     shootCooldown:
       kind === "brainboss"
         ? 999
         : base.ranged
-          ? 1.1 + Math.random() * base.shootRate
+          ? (1.1 + Math.random() * base.shootRate) /
+            MONSTER_ATTACK_SPEED_MULTIPLIER
           : 0,
     shootRate: base.shootRate,
     projectileSpeed: base.projectileSpeed,
@@ -345,7 +349,7 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
       (kind === "brainboss"
         ? 1
         : base.ranged
-          ? 0.98 + Math.random() * 0.06
+          ? 1.12 + Math.random() * 0.2
           : 0.95 + Math.random() * 0.1),
     hoverPhase: Math.random() * Math.PI * 2,
     cornerShooter: Boolean(base.cornerShooter),
@@ -363,8 +367,11 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     spawnStartY: startY,
     spawnElapsed: 0,
     spawnDuration,
-    bossOrbCooldown: kind === "brainboss" ? 2.8 : 999,
-    bossLaserCooldown: kind === "brainboss" ? 1.8 : 999,
-    bossBlastCooldown: kind === "brainboss" ? 5.2 : 999,
+    bossOrbCooldown:
+      kind === "brainboss" ? 2.8 / MONSTER_ATTACK_SPEED_MULTIPLIER : 999,
+    bossLaserCooldown:
+      kind === "brainboss" ? 1.8 / MONSTER_ATTACK_SPEED_MULTIPLIER : 999,
+    bossBlastCooldown:
+      kind === "brainboss" ? 5.2 / MONSTER_ATTACK_SPEED_MULTIPLIER : 999,
   };
 };
