@@ -19,9 +19,9 @@ export const COMMON_UPGRADES: UpgradeCard[] = [
   card("catalyst", "Catalyst", "Damage +2", "common", "✦", "#f8fafc"),
   card("eyesight", "Eyesight", "Critical Chance +5%", "common", "◉", "#f8fafc"),
   card("growth", "Growth", "Max HP +10", "common", "♥", "#f8fafc"),
-  card("impulse", "Impulse", "Jump Height +30%", "common", "↟", "#f8fafc"),
+  card("impulse", "Impulse", "Jump Height +10%", "common", "↟", "#f8fafc"),
   card("renew", "Renew", "Heal to Max HP", "common", "✚", "#f8fafc"),
-  card("resist", "Resist", "Armor +4%", "common", "▣", "#f8fafc"),
+  card("resist", "Resist", "Defense +4%", "common", "▣", "#f8fafc"),
   card("resonance", "Resonance", "Atk Speed +12%", "common", "≫", "#f8fafc"),
   card(
     "souls",
@@ -99,7 +99,7 @@ export const UNCOMMON_UPGRADES: UpgradeCard[] = [
   card(
     "rage",
     "Rage",
-    "Under 50% HP, your projectile and body damage rise",
+    "If under 50% HP, raises your projectile and body damage",
     "uncommon",
     "⚑",
     "#86efac",
@@ -132,7 +132,7 @@ export const UNCOMMON_UPGRADES: UpgradeCard[] = [
   card(
     "thunderbolt",
     "Thunderbolt",
-    "Calls 2 thunderbolts from the sky every few seconds",
+    "Calls a thunderbolt from the sky",
     "uncommon",
     "⚡",
     "#86efac",
@@ -167,7 +167,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "fragmentationPlus",
     "Fragmentation+",
-    "Killed enemies release 6 small projectiles",
+    "When killed, enemies explode into 6 new projectiles",
     "epic",
     "✹",
     "#c084fc",
@@ -183,7 +183,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "focus",
     "Focus",
-    "Gain attack speed every second you do not move",
+    "Gains attack speed every second you do not move",
     "epic",
     "◈",
     "#c084fc",
@@ -208,7 +208,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "thunderboltPlus",
     "Thunderbolt+",
-    "Calls 6 thunderbolts from the sky every few seconds",
+    "Calls a thunderbolt from the skies",
     "epic",
     "⚡",
     "#c084fc",
@@ -216,7 +216,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "tome",
     "Tome",
-    "New common items are 35% more effective",
+    "Common upgrades become 35% more effective",
     "epic",
     "📘",
     "#c084fc",
@@ -224,7 +224,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "willOWisp",
     "Will-O-Wisp",
-    "Summons a wisp with half your attack damage and speed",
+    "Summons a wisp that inherits half your attack damage and speed",
     "epic",
     "✧",
     "#c084fc",
@@ -232,7 +232,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "wound",
     "Wound",
-    "Dealing damage applies bleeding to the enemy",
+    "Dealing damage applies bleeding to enemy",
     "epic",
     "🩸",
     "#c084fc",
@@ -243,7 +243,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "absorbent",
     "Absorbent",
-    "Projectile hits during invulnerability heal 1 HP",
+    "Every projectile that hits you when invulnerable heals you 1 HP",
     "ascension",
     "🜁",
     "#f59e0b",
@@ -270,7 +270,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "blessed",
     "Blessed",
-    "5% chance of finding epic items",
+    "5% Chance of finding epic items",
     "ascension",
     "✟",
     "#f59e0b",
@@ -279,7 +279,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "bloodyMage",
     "Bloody Mage",
-    "Bleeding ticks twice as fast",
+    "Bleeding deals damage faster",
     "ascension",
     "🩸",
     "#f59e0b",
@@ -297,7 +297,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "bunker",
     "Bunker",
-    "Standing still grants armor every second up to 95",
+    "Gains +4 armor every second you don't move up to 95",
     "ascension",
     "▤",
     "#f59e0b",
@@ -369,7 +369,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "freezer",
     "Freezer",
-    "Enemies can now be slowed to 100% and may shatter",
+    "Can now slow enemies up to 100%. When this happens, damage from any source has a 1% chance to insta kill the enemy",
     "ascension",
     "❅",
     "#f59e0b",
@@ -396,7 +396,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "godOfThunder",
     "God of Thunder",
-    "Thunderbolts deal 3x more damage",
+    "Thunderbolts deal 3x more damage and also buff the Thunder Mage basic attack",
     "ascension",
     "⚡",
     "#f59e0b",
@@ -405,7 +405,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "hoarder",
     "Hoarder",
-    "Healing orbs charge your next attack",
+    "Healing orbs charge your next attack.",
     "ascension",
     "◎",
     "#f59e0b",
@@ -432,7 +432,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "pacMan",
     "Pac-Man",
-    "Projectiles that eat enemy shots gain damage",
+    "Every time your projectiles pass through an enemy projectile increase it's damage",
     "ascension",
     "◉",
     "#f59e0b",
@@ -441,7 +441,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "plagueSpreader",
     "Plague Spreader",
-    "Removes 1% HP from all enemies every second",
+    "Removes 1% HP from all your enemies every 1 second.",
     "ascension",
     "☣",
     "#f59e0b",
@@ -450,7 +450,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "protector",
     "Protector",
-    "When your shield breaks, shoot in all directions",
+    "When your shield breaks, shoot in all directions.",
     "ascension",
     "⬡",
     "#f59e0b",
@@ -459,7 +459,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "ramDestroyer",
     "RAM Destroyer",
-    "Fragmentation projectiles become larger",
+    "Fragmentation bullets decay less",
     "ascension",
     "✹",
     "#f59e0b",
@@ -477,7 +477,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   card(
     "speculator",
     "Speculator",
-    "Critical hits have a chance to become super critical hits",
+    "Can deal super critical hits",
     "ascension",
     "✺",
     "#f59e0b",
@@ -596,10 +596,10 @@ const ASCENSION_POINT_OVERRIDES: Partial<Record<UpgradeId, number>> = {
   fragmentationPlus: 2,
   friction: 1,
   frictionPlus: 2,
-  growthPlusPlus: 2,
+  growthPlusPlus: 3,
   gush: 1,
   leech: 1,
-  leechPlus: 2,
+  leechPlus: 3,
   luck: 1,
   orb: 1,
   overheat: 1,
@@ -608,7 +608,7 @@ const ASCENSION_POINT_OVERRIDES: Partial<Record<UpgradeId, number>> = {
   regrowth: 1,
   shrink: 1,
   thunderbolt: 1,
-  thunderboltPlus: 2,
+  thunderboltPlus: 3,
   tome: 1,
   willOWisp: 1,
   wound: 1,

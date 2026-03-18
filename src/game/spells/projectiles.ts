@@ -20,9 +20,12 @@ const getEnemyProjectileHp = (enemy: Enemy) => Math.max(1, Math.ceil(enemy.damag
 const getDamageMultiplier = (state: GameState) => {
   let multiplier = 1;
 
-  if (state.player.hp <= state.player.maxHp * 0.5 && state.effects.ragePower > 0) {
-    const missingRatio = 1 - state.player.hp / Math.max(1, state.player.maxHp * 0.5);
-    multiplier += Math.min(0.5, state.effects.ragePower) * Math.max(0, missingRatio);
+  if (state.effects.ragePower > 0) {
+    const hpRatio = state.player.hp / Math.max(1, state.player.maxHp);
+    if (hpRatio < 0.5) {
+      const missingRatio = Math.max(0, (0.5 - hpRatio) / 0.5);
+      multiplier += state.effects.ragePower * 0.5 * missingRatio;
+    }
   }
 
   return multiplier;
@@ -44,15 +47,17 @@ export const rollCritical = (state: GameState): { multiplier: number; kind: Crit
 
   // A normal critical always deals the current hit damage plus 50% more.
   // Extra crit bonus stacks on top of that baseline.
-  if (state.effects.superCrits && Math.random() < 0.25) {
+  const critMultiplier = 1 + BASE_CRIT_BONUS_MULTIPLIER + state.effects.critBonus;
+
+  if (state.effects.superCrits && Math.random() < state.effects.critChance) {
     return {
-      multiplier: 1 + BASE_SUPER_CRIT_BONUS_MULTIPLIER + state.effects.critBonus,
+      multiplier: critMultiplier * critMultiplier,
       kind: 'super',
     };
   }
 
   return {
-    multiplier: 1 + BASE_CRIT_BONUS_MULTIPLIER + state.effects.critBonus,
+    multiplier: critMultiplier,
     kind: 'crit',
   };
 };
@@ -76,7 +81,7 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
     const targetX = clamp(aim.x, 24, state.width - 24);
     const target = {
       x: targetX,
-      y: clamp(getGroundY(state.terrain, targetX) - 18, 56, state.height - 26),
+      y: clamp(getGroundY(state.terrain, targetX) - 8, 56, state.height - 18),
     };
     const lineFrom = {
       x: target.x + (Math.random() * 36 - 18),
@@ -106,7 +111,7 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
       behavior: 'thunder',
       pierce: 1,
       hitIds: [],
-      aoeRadius: Math.max(42, player.explosionRadius || 0),
+      aoeRadius: Math.max(state.effects.godOfThunder ? 78 : 54, player.explosionRadius || 0),
       homingStrength: 0,
       chargeBonus: chargeMultiplier - 1,
       projectileHp: 1 + state.effects.projectileDurability,
@@ -201,6 +206,7 @@ export const fireEnemyShot = (state: GameState, enemy: Enemy) => {
     hitIds: [],
     aoeRadius: 0,
     homingStrength: 0,
+    sourceEnemyId: enemy.id,
     projectileHp,
     projectileMaxHp: projectileHp,
   });

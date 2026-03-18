@@ -207,6 +207,10 @@ const rarityColor = (rarity: UpgradeRarity) => ({
   ascension: '#f59e0b',
 }[rarity]);
 
+const hudUpgradeIconColor = (rarity: UpgradeRarity) => (
+  rarity === 'ascension' ? '#f59e0b' : '#f8fafc'
+);
+
 const getActiveShopItem = (state: GameState) => state.shopItems.find((item) => item.owned && item.active) ?? null;
 
 const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: number, tick: number) => {
@@ -595,6 +599,8 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
         : `rgba(147,197,253,${0.55 * alpha})`;
     const shadowColor = soulStyle ? '#c084fc' : (godStyle ? '#ef4444' : '#93c5fd');
     const flashRadius = strike.flashRadius ?? 62;
+    const outerLineWidth = strike.boltWidth ?? (soulStyle ? 8 : 7);
+    const innerLineWidth = Math.max(3, outerLineWidth * 0.5);
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
 
@@ -611,7 +617,7 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
     boltPoints[boltPoints.length - 1] = strike.to;
 
     ctx.strokeStyle = outerStroke;
-    ctx.lineWidth = soulStyle ? 8 : 7;
+    ctx.lineWidth = outerLineWidth;
     ctx.shadowColor = shadowColor;
     ctx.shadowBlur = soulStyle ? 28 : 24;
     ctx.beginPath();
@@ -620,7 +626,7 @@ const drawThunderStrikes = (ctx: CanvasRenderingContext2D, state: GameState) => 
     ctx.stroke();
 
     ctx.strokeStyle = innerStroke;
-    ctx.lineWidth = soulStyle ? 4 : 3.5;
+    ctx.lineWidth = innerLineWidth;
     ctx.beginPath();
     ctx.moveTo(boltPoints[0].x, boltPoints[0].y);
     for (const point of boltPoints.slice(1)) ctx.lineTo(point.x, point.y);
@@ -858,34 +864,34 @@ const drawFlowerProjectile = (ctx: CanvasRenderingContext2D, projectile: GameSta
 
 const drawFragmentProjectile = (ctx: CanvasRenderingContext2D, projectile: GameState['projectiles'][number], tick: number) => {
   const radius = projectile.radius;
-  const palette = ['#fb7185', '#f59e0b', '#fde047', '#4ade80', '#38bdf8', '#c084fc'];
+  const palette = ['#ddd6fe', '#c084fc', '#a855f7', '#9333ea', '#7e22ce', '#f5f3ff'];
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
 
   for (let i = 0; i < palette.length; i += 1) {
     const angle = tick * 0.01 + i * (Math.PI * 2 / palette.length);
-    const px = projectile.pos.x + Math.cos(angle) * radius * 0.95;
-    const py = projectile.pos.y + Math.sin(angle) * radius * 0.95;
-    ctx.fillStyle = withAlpha(palette[i], 0.6);
+    const px = projectile.pos.x + Math.cos(angle) * radius * 1.02;
+    const py = projectile.pos.y + Math.sin(angle) * radius * 1.02;
+    ctx.fillStyle = withAlpha(palette[i], 0.62);
     ctx.beginPath();
-    ctx.arc(px, py, Math.max(1.2, radius * 0.5), 0, Math.PI * 2);
+    ctx.arc(px, py, Math.max(1.4, radius * 0.52), 0, Math.PI * 2);
     ctx.fill();
   }
 
-  const glow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * 5.1);
+  const glow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * 5.4);
   glow.addColorStop(0, 'rgba(255,255,255,0.98)');
-  glow.addColorStop(0.18, 'rgba(253,224,71,0.95)');
-  glow.addColorStop(0.42, 'rgba(192,132,252,0.55)');
-  glow.addColorStop(0.72, 'rgba(56,189,248,0.32)');
+  glow.addColorStop(0.16, 'rgba(233,213,255,0.96)');
+  glow.addColorStop(0.38, 'rgba(192,132,252,0.72)');
+  glow.addColorStop(0.62, 'rgba(147,51,234,0.36)');
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 5.1, 0, Math.PI * 2);
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 5.4, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
-  ctx.arc(projectile.pos.x, projectile.pos.y, radius * 0.95, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,250,220,0.95)';
+  ctx.arc(projectile.pos.x, projectile.pos.y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(245,243,255,0.96)';
   ctx.fill();
   ctx.restore();
 };
@@ -973,7 +979,7 @@ const drawProjectiles = (ctx: CanvasRenderingContext2D, state: GameState) => {
     ctx.globalCompositeOperation = 'screen';
 
     const outerGlow = ctx.createRadialGradient(projectile.pos.x, projectile.pos.y, 0, projectile.pos.x, projectile.pos.y, radius * (projectile.behavior === 'meteor' ? 5.6 : projectile.behavior === 'fragment' ? 4.6 : 3.3));
-    const coreColor = projectile.behavior === 'fragment' ? 'rgba(255,248,196,0.95)' : projectile.color;
+    const coreColor = projectile.behavior === 'fragment' ? withAlpha(projectile.color, 0.96) : projectile.color;
     outerGlow.addColorStop(0, coreColor);
     outerGlow.addColorStop(0.35, projectile.color);
     outerGlow.addColorStop(1, 'rgba(0,0,0,0)');
@@ -982,7 +988,7 @@ const drawProjectiles = (ctx: CanvasRenderingContext2D, state: GameState) => {
     ctx.arc(projectile.pos.x, projectile.pos.y, radius * (projectile.behavior === 'meteor' ? 5.6 : projectile.behavior === 'fragment' ? 4.6 : 3.3), 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = projectile.behavior === 'fragment' ? 'rgba(255,248,196,0.9)' : 'rgba(255,255,255,0.55)';
+    ctx.strokeStyle = projectile.behavior === 'fragment' ? withAlpha(projectile.color, 0.9) : 'rgba(255,255,255,0.55)';
     ctx.lineWidth = trailWidth;
     ctx.beginPath();
     ctx.moveTo(tailX, tailY);
@@ -1168,7 +1174,7 @@ const drawHud = (ctx: CanvasRenderingContext2D, state: GameState) => {
       const y = startY + row * 26;
       if (y > topY + 54) return;
 
-      drawUpgradeIcon(ctx, card.icon, x, y, iconSize, card.color, 'plain');
+      drawUpgradeIcon(ctx, card.icon, x, y, iconSize, hudUpgradeIconColor(card.rarity), 'plain');
       ctx.fillStyle = '#f8fafc';
       ctx.font = '12px Arial';
       ctx.textAlign = 'left';
@@ -1189,6 +1195,11 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
   state.ui.mageCards = [];
   state.ui.startRect = null;
   state.ui.shopRect = null;
+  state.ui.loginRect = null;
+  state.ui.registerRect = null;
+  state.ui.rankingRect = null;
+  state.ui.logoutRect = null;
+  state.ui.logoutRect = null;
 
   ctx.fillStyle = '#f8fafc';
   ctx.font = '36px Arial';
@@ -1226,6 +1237,7 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
     drawMagePortrait(ctx, drawRect.x + drawRect.w / 2, drawRect.y + 52, 82, unlocked ? mage.color : 'rgba(148,163,184,0.55)');
 
     ctx.fillStyle = '#f8fafc';
+    ctx.textAlign = 'center';
     ctx.font = '18px Arial';
     ctx.fillText(mage.name, drawRect.x + drawRect.w / 2, drawRect.y + 104);
     ctx.font = '13px Arial';
@@ -1236,17 +1248,69 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
     ctx.fillText(unlocked ? 'Unlocked' : `Locked · ${25} souls`, drawRect.x + drawRect.w / 2, drawRect.y + drawRect.h - 18);
   });
 
-  const buttonY = y + cardHeight + 28;
-  const startRect = { x: state.width / 2 - 230, y: buttonY, w: 216, h: 56 };
-  const shopRect = { x: state.width / 2 + 14, y: buttonY, w: 216, h: 56 };
+  const primaryButtonY = y + cardHeight + 28;
+  const startRect = { x: state.width / 2 - 230, y: primaryButtonY, w: 216, h: 56 };
+  const shopRect = { x: state.width / 2 + 14, y: primaryButtonY, w: 216, h: 56 };
   state.ui.startRect = startRect;
   state.ui.shopRect = shopRect;
 
   const startDrawRect = drawHoverPanel(ctx, startRect, 'rgba(91,33,182,0.92)', '#c4b5fd', isRectHovered(state, startRect), '#c4b5fd');
   const shopDrawRect = drawHoverPanel(ctx, shopRect, 'rgba(15,23,42,0.94)', '#93c5fd', isRectHovered(state, shopRect), '#93c5fd');
 
-  drawCenteredLabel(ctx, 'Start Run', startDrawRect, '22px Arial');
+  drawCenteredLabel(ctx, state.auth.isLoggedIn ? 'Play' : 'Play as Guest', startDrawRect, '22px Arial');
   drawCenteredLabel(ctx, 'Shop', shopDrawRect, '22px Arial');
+
+  const secondaryButtonY = primaryButtonY + 74;
+  const secondaryWidth = 148;
+  const secondaryGap = 14;
+
+  if (state.auth.isLoggedIn) {
+    const totalSecondaryWidth = secondaryWidth * 2 + secondaryGap;
+    const secondaryStartX = state.width / 2 - totalSecondaryWidth / 2;
+    const rankingRect = { x: secondaryStartX, y: secondaryButtonY, w: secondaryWidth, h: 48 };
+    const logoutRect = { x: secondaryStartX + secondaryWidth + secondaryGap, y: secondaryButtonY, w: secondaryWidth, h: 48 };
+    const accountRect = { x: state.width / 2 - 170, y: secondaryButtonY + 64, w: 340, h: 54 };
+    const accountDrawRect = drawHoverPanel(ctx, accountRect, 'rgba(15,23,42,0.94)', 'rgba(148,163,184,0.35)', false, '#86efac');
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '18px Arial';
+    ctx.fillStyle = '#86efac';
+    ctx.fillText(state.auth.nickname ?? 'Account', accountDrawRect.x + accountDrawRect.w / 2, accountDrawRect.y + 17);
+    ctx.font = '12px Arial';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(`Best score ${state.auth.highScore} · Best wave ${state.auth.highestWave}`, accountDrawRect.x + accountDrawRect.w / 2, accountDrawRect.y + 38);
+
+    state.ui.rankingRect = rankingRect;
+    state.ui.logoutRect = logoutRect;
+
+    const rankingDrawRect = drawHoverPanel(ctx, rankingRect, 'rgba(15,23,42,0.92)', '#fcd34d', isRectHovered(state, rankingRect), '#fcd34d');
+    const logoutDrawRect = drawHoverPanel(ctx, logoutRect, 'rgba(15,23,42,0.92)', '#bfdbfe', isRectHovered(state, logoutRect), '#bfdbfe');
+    drawCenteredLabel(ctx, 'Ranking', rankingDrawRect, '18px Arial');
+    drawCenteredLabel(ctx, 'Logout', logoutDrawRect, '18px Arial');
+  } else {
+    const totalSecondaryWidth = secondaryWidth * 3 + secondaryGap * 2;
+    const secondaryStartX = state.width / 2 - totalSecondaryWidth / 2;
+    const loginRect = { x: secondaryStartX, y: secondaryButtonY, w: secondaryWidth, h: 48 };
+    const registerRect = { x: secondaryStartX + secondaryWidth + secondaryGap, y: secondaryButtonY, w: secondaryWidth, h: 48 };
+    const rankingRect = { x: secondaryStartX + (secondaryWidth + secondaryGap) * 2, y: secondaryButtonY, w: secondaryWidth, h: 48 };
+    state.ui.loginRect = loginRect;
+    state.ui.registerRect = registerRect;
+    state.ui.rankingRect = rankingRect;
+
+    const loginDrawRect = drawHoverPanel(ctx, loginRect, 'rgba(15,23,42,0.92)', '#bfdbfe', isRectHovered(state, loginRect), '#bfdbfe');
+    const registerDrawRect = drawHoverPanel(ctx, registerRect, 'rgba(15,23,42,0.92)', '#ddd6fe', isRectHovered(state, registerRect), '#ddd6fe');
+    const rankingDrawRect = drawHoverPanel(ctx, rankingRect, 'rgba(15,23,42,0.92)', '#fcd34d', isRectHovered(state, rankingRect), '#fcd34d');
+
+    drawCenteredLabel(ctx, 'Login', loginDrawRect, '18px Arial');
+    drawCenteredLabel(ctx, 'Registration', registerDrawRect, '18px Arial');
+    drawCenteredLabel(ctx, 'Ranking', rankingDrawRect, '18px Arial');
+
+    ctx.font = '13px Arial';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.fillText('Guest runs can play normally, but only registered accounts are saved to the ranking.', state.width / 2, secondaryButtonY + 72);
+  }
 };
 
 const drawBetweenWave = (ctx: CanvasRenderingContext2D, state: GameState) => {
@@ -1484,6 +1548,10 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState) => {
   state.ui.shopCards = [];
   state.ui.startRect = null;
   state.ui.shopRect = null;
+  state.ui.loginRect = null;
+  state.ui.registerRect = null;
+  state.ui.rankingRect = null;
+  state.ui.logoutRect = null;
   state.ui.nextWaveRect = null;
   state.ui.restartRect = null;
   state.ui.menuRect = null;

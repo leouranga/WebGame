@@ -362,6 +362,7 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     bleedStacks: 0,
     bleedTickTimer: 1,
     bodyHitCooldown: 0,
+    meleeAttackCooldown: 0,
     deathHandled: false,
     marksmanCritConsumed: false,
     spawnStartY: startY,

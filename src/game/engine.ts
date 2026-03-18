@@ -4,12 +4,15 @@ import { createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
 import { createProjectile, fireEnemyShot, firePlayerShot, rollCritical } from '@/game/spells/projectiles';
 import { clamp, createTerrain, getGroundY, lerp } from '@/game/terrain';
+import { createDefaultUnlockedMages, normalizeAccountProgress, type PersistedAccountProgress } from '@/lib/progress';
 import type {
   Enemy,
+  AuthState,
   FloatingText,
   GameState,
   InputState,
   MageId,
+  MenuOverlay,
   Projectile,
   RunEffects,
   ShopItemId,
@@ -48,17 +51,44 @@ const addImpact = (state: GameState, pos: Vec, radius: number, color: string, li
   });
 };
 
+const THUNDERBOLT_BASE_COOLDOWN = 2;
+const THUNDERBOLT_MIN_COOLDOWN = 0.3;
+
+const reduceThunderboltCooldown = (state: GameState, amount: number) => {
+  state.effects.thunderboltInterval = Math.max(THUNDERBOLT_MIN_COOLDOWN, state.effects.thunderboltInterval - amount);
+};
+
 const getThunderboltBaseDamage = (state: GameState) => {
   const baseMageDamage = getMageDefinition(state.player.mageId).damage;
-  return 26 + Math.max(0, state.player.damage - baseMageDamage);
+  return 26 + Math.max(0, state.player.damage - baseMageDamage) + state.effects.thunderboltDamageBonus;
 };
 
 const getThunderboltDamage = (state: GameState) => Math.max(1, Math.round(getThunderboltBaseDamage(state) * state.effects.thunderboltDamageMultiplier));
 const getThunderboltStyle = (state: GameState): 'thunder' | 'god' => (state.effects.godOfThunder ? 'god' : 'thunder');
 const getThunderboltColor = (state: GameState) => (state.effects.godOfThunder ? '#ef4444' : '#60a5fa');
+const getThunderboltStrikeRadius = (state: GameState) => (state.effects.godOfThunder ? 78 : 54);
+const getThunderboltBoltWidth = (state: GameState) => (state.effects.godOfThunder ? 26 : 22);
+
+const getRageMissingRatio = (state: GameState) => {
+  const hpRatio = state.player.hp / Math.max(1, state.player.maxHp);
+  if (hpRatio >= 0.5) return 0;
+  return Math.max(0, (0.5 - hpRatio) / 0.5);
+};
+
+const getWispMageDefinition = (state: GameState) =>
+  state.player.mageId === 'void' ? getMageDefinition('wind') : getMageDefinition(state.player.mageId);
 const EXORCIST_RADIUS = 100;
 const MAGE_UNLOCK_COST = 25;
 const BRAIN_BOSS_BLAST_RADIUS = 140;
+
+const createGuestAuth = (): AuthState => ({
+  isLoggedIn: false,
+  userId: null,
+  login: null,
+  nickname: null,
+  highScore: 0,
+  highestWave: 0,
+});
 
 const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
   const dir = normalize({ x: state.player.pos.x - enemy.pos.x, y: state.player.pos.y - enemy.pos.y });
@@ -76,6 +106,7 @@ const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
     aoeRadius: 0,
     homingStrength: 0,
     fromUpgrade: 'brainbossOrb',
+    sourceEnemyId: enemy.id,
     projectileHp: 8,
     projectileMaxHp: 8,
   });
@@ -97,6 +128,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
     aoeRadius: 0,
     homingStrength: 0,
     fromUpgrade: 'brainbossLaser',
+    sourceEnemyId: enemy.id,
     projectileHp: 99,
     projectileMaxHp: 99,
   });
@@ -109,7 +141,7 @@ const castBrainBossBlast = (state: GameState, enemy: Enemy) => {
   }
 };
 
-const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'soul' | 'god' = 'thunder', from?: Vec, flashRadius?: number) => {
+const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'soul' | 'god' = 'thunder', from?: Vec, flashRadius?: number, boltWidth?: number) => {
   state.thunderStrikes.push({
     id: state.nextId++,
     from: from ?? { x: to.x + (Math.random() * 60 - 30), y: 20 },
@@ -118,6 +150,7 @@ const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'sou
     maxLife: 0.28,
     style,
     flashRadius,
+    boltWidth,
   });
 };
 
@@ -141,8 +174,9 @@ const createEffects = (): RunEffects => ({
   ragePower: 0,
   regrowthRate: 0,
   thunderboltCount: 0,
-  thunderboltTimer: 2.5,
-  thunderboltInterval: 3.2,
+  thunderboltTimer: THUNDERBOLT_BASE_COOLDOWN,
+  thunderboltInterval: THUNDERBOLT_BASE_COOLDOWN,
+  thunderboltDamageBonus: 0,
   thunderboltDamageMultiplier: 1,
   godOfThunder: false,
   appraisalChoices: 0,
@@ -282,14 +316,21 @@ const applyMaxHealthUpgrade = (state: GameState, maxHpGain: number, healGain = m
 };
 
 
-const getArmorMultiplier = (armorPercent: number) => {
+const getArmorMultiplier = (armorPercent: number, cap = 95) => {
   if (armorPercent <= 0) return 1;
-  return 1 - Math.min(95, armorPercent) / 100;
+  return 1 - Math.min(cap, armorPercent) / 100;
+};
+
+const getEffectiveArmorPercent = (state: GameState) => {
+  const bunker = Math.min(95, Math.max(0, state.effects.bunkerArmor));
+  const resist = Math.min(90, Math.max(0, state.effects.resistArmor));
+  const combined = 1 - getArmorMultiplier(bunker, 95) * getArmorMultiplier(resist, 90);
+  return Math.max(0, Math.min(95, combined * 100));
 };
 
 const getCurrentDefenseMultiplier = (state: GameState) => {
-  const bunker = getArmorMultiplier(state.effects.bunkerArmor);
-  const resist = getArmorMultiplier(state.effects.resistArmor);
+  const bunker = getArmorMultiplier(state.effects.bunkerArmor, 95);
+  const resist = getArmorMultiplier(state.effects.resistArmor, 90);
   return state.player.damageTakenMultiplier * bunker * resist;
 };
 
@@ -359,6 +400,9 @@ const damagePlayer = (state: GameState, rawAmount: number, attacker?: Enemy | Pr
   if (state.effects.barrierReady) {
     state.effects.barrierReady = false;
     state.effects.barrierTimer = state.effects.barrierCooldown;
+    player.invuln = state.effects.cloakInvulnDuration > 0
+      ? state.effects.cloakInvulnDuration
+      : PLAYER_I_FRAMES * state.effects.invulnMultiplier;
     addText(state, 'Blocked', { x: player.pos.x, y: player.pos.y - 28 }, '#93c5fd');
     if (state.effects.protector) {
       spawnRingProjectiles(state, 8, Math.max(4, Math.round(player.damage * 0.8)), '#93c5fd', 4);
@@ -373,8 +417,14 @@ const damagePlayer = (state: GameState, rawAmount: number, attacker?: Enemy | Pr
     : PLAYER_I_FRAMES * state.effects.invulnMultiplier;
   addText(state, `-${amount}`, { x: player.pos.x, y: player.pos.y - 28 }, '#f87171');
 
-  if (attacker && 'hp' in attacker && state.effects.reflectDamage > 0) {
-    damageEnemy(state, attacker, amount, '#fca5a5');
+  if (state.effects.reflectDamage > 0) {
+    const reflectedDamage = Math.max(1, Math.round(getEffectiveArmorPercent(state) * 2));
+    if (attacker && 'hp' in attacker) {
+      damageEnemy(state, attacker, reflectedDamage, '#fca5a5');
+    } else if (attacker && 'sourceEnemyId' in attacker && typeof attacker.sourceEnemyId === 'number') {
+      const sourceEnemy = state.enemies.find((enemy) => enemy.id === attacker.sourceEnemyId);
+      if (sourceEnemy) damageEnemy(state, sourceEnemy, reflectedDamage, '#fca5a5');
+    }
   }
 
   if (player.hp <= 0) {
@@ -407,8 +457,33 @@ const trySoulDrop = (state: GameState, enemy: Enemy) => {
   }
 
   if (Math.random() <= state.effects.healOrbChance) {
-    createOrb(state, enemy.pos, 20, 'heal');
+    createOrb(state, enemy.pos, 5 + Math.max(0, state.upgradeCounts.orb ?? 0), 'heal');
   }
+};
+
+const getCurrentRageMultiplier = (state: GameState) => {
+  if (state.effects.ragePower <= 0) return 1;
+  return 1 + state.effects.ragePower * 0.5 * getRageMissingRatio(state);
+};
+
+const hasFragmentationPlus = (state: GameState) => (state.upgradeCounts.fragmentationPlus ?? 0) > 0;
+
+const getFragmentationSpawnCount = (state: GameState) =>
+  hasFragmentationPlus(state) ? 6 : state.effects.fragmentationCount;
+
+const getFragmentGenerationLoss = (state: GameState) => (hasAscension(state, 'ramDestroyer') ? 0.1 : 0.5);
+
+const getFragmentationSpawnDamage = (state: GameState, sourceProjectile?: Projectile) => {
+  if (!hasFragmentationPlus(state)) {
+    return 2 + state.effects.fragmentationDamageBonus;
+  }
+
+  if (sourceProjectile?.behavior === 'fragment') {
+    const sourceDamage = Math.max(1, Math.round(sourceProjectile.baseDamage ?? sourceProjectile.damage));
+    return Math.max(1, Math.round(sourceDamage * (1 - getFragmentGenerationLoss(state))));
+  }
+
+  return Math.max(1, Math.round(state.player.damage * getCurrentRageMultiplier(state) * 0.7));
 };
 
 const spawnFragments = (state: GameState, pos: Vec, count: number, damage: number, color: string) => {
@@ -419,8 +494,9 @@ const spawnFragments = (state: GameState, pos: Vec, count: number, damage: numbe
     createProjectile(state, {
       pos: { x: origin.x, y: origin.y },
       vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
-      radius: 5 * state.effects.fragmentationSizeMultiplier,
+      radius: 6 * state.effects.fragmentationSizeMultiplier,
       damage,
+      baseDamage: damage,
       color,
       life: 1.15 * state.effects.fragmentationLifeMultiplier,
       owner: 'player',
@@ -434,7 +510,7 @@ const spawnFragments = (state: GameState, pos: Vec, count: number, damage: numbe
   }
 };
 
-const killEnemy = (state: GameState, enemy: Enemy) => {
+const killEnemy = (state: GameState, enemy: Enemy, sourceProjectile?: Projectile) => {
   if (enemy.deathHandled) return;
   enemy.deathHandled = true;
   enemy.hp = 0;
@@ -443,9 +519,10 @@ const killEnemy = (state: GameState, enemy: Enemy) => {
   state.wave.cleared += 1;
   trySoulDrop(state, { ...enemy, pos: deathPos });
   if (state.effects.fragmentationCount > 0) {
-    const fragmentDamage = Math.max(1, Math.round(state.player.damage * 0.4)) + state.effects.fragmentationDamageBonus;
-    spawnFragments(state, deathPos, state.effects.fragmentationCount, fragmentDamage, '#fbbf24');
-    addImpact(state, deathPos, 22 + state.effects.fragmentationCount * 2, '#fde047', 0.22);
+    const fragmentCount = getFragmentationSpawnCount(state);
+    const fragmentDamage = getFragmentationSpawnDamage(state, sourceProjectile);
+    spawnFragments(state, deathPos, fragmentCount, fragmentDamage, '#a855f7');
+    addImpact(state, deathPos, 24 + fragmentCount * 2, 'rgba(168,85,247,0.82)', 0.22);
   }
 };
 
@@ -477,10 +554,10 @@ const resolveProjectileHit = (state: GameState, enemy: Enemy, projectile: Projec
   return { damage, color };
 };
 
-const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#ffffff', applyOnHitEffects = true) => {
+const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#ffffff', applyOnHitEffects = true, sourceProjectile?: Projectile) => {
   if (enemy.deathHandled) return;
   if (enemy.hp <= 0) {
-    killEnemy(state, enemy);
+    killEnemy(state, enemy, sourceProjectile);
     return;
   }
   enemy.hp -= amount;
@@ -494,7 +571,7 @@ const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#f
 
   if (applyOnHitEffects && state.effects.wound) {
     enemy.bleed = Number.POSITIVE_INFINITY;
-    enemy.bleedStacks = Math.min(6, Math.max(0, enemy.bleedStacks) + 1);
+    enemy.bleedStacks = Math.max(0, enemy.bleedStacks) + 1;
     enemy.bleedTickTimer = Math.min(enemy.bleedTickTimer, getBleedTickInterval(state));
   }
 
@@ -511,7 +588,7 @@ const damageEnemy = (state: GameState, enemy: Enemy, amount: number, color = '#f
   }
 
   if (enemy.hp <= 0) {
-    killEnemy(state, enemy);
+    killEnemy(state, enemy, sourceProjectile);
   }
 };
 
@@ -522,13 +599,20 @@ const explodeAt = (
   damage: number,
   color: string,
   excludedEnemyIds: number[] = [],
+  sourceProjectile?: Projectile,
 ) => {
   addImpact(state, center, radius, color, 0.26);
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0 || enemy.deathHandled) continue;
     if (excludedEnemyIds.includes(enemy.id)) continue;
-    if (distance(enemy.pos, center) <= radius) {
-      damageEnemy(state, enemy, damage, color);
+    const dist = distance(enemy.pos, center);
+    if (dist <= radius) {
+      let finalDamage = damage;
+      if (sourceProjectile?.behavior === 'friction' && hasAscension(state, 'antiAircraft')) {
+        const proximity = Math.max(0, 1 - dist / Math.max(1, radius));
+        finalDamage = Math.max(1, Math.round(damage * (1 + proximity)));
+      }
+      damageEnemy(state, enemy, finalDamage, color, true, sourceProjectile);
     }
   }
 };
@@ -594,7 +678,7 @@ const separateEnemies = (state: GameState) => {
 };
 
 
-const getThunderHitTarget = (state: GameState, from: Vec, to: Vec) => {
+const getThunderHitTarget = (state: GameState, from: Vec, to: Vec, boltWidth: number) => {
   const abx = to.x - from.x;
   const aby = to.y - from.y;
   const abLenSq = abx * abx + aby * aby || 1;
@@ -607,7 +691,7 @@ const getThunderHitTarget = (state: GameState, from: Vec, to: Vec) => {
     const apy = enemy.pos.y - from.y;
     const t = (apx * abx + apy * aby) / abLenSq;
     if (t < 0 || t > 1) continue;
-    const reach = Math.max(enemy.width, enemy.height) * 0.44 + 10;
+    const reach = Math.max(enemy.width, enemy.height) * 0.44 + boltWidth;
     if (distanceToSegment(enemy.pos, from, to) > reach) continue;
     if (t < bestT) {
       bestT = t;
@@ -621,10 +705,9 @@ const getThunderHitTarget = (state: GameState, from: Vec, to: Vec) => {
 const getThunderStrikeGroundTarget = (state: GameState, x: number) => {
   const targetX = clamp(x, 24, state.width - 24);
   const groundY = getGroundY(state.terrain, targetX);
-  const lift = 10 + Math.random() * 30;
   return {
     x: targetX,
-    y: clamp(groundY - lift, 56, state.height - 26),
+    y: clamp(groundY, 56, state.height - 20),
   };
 };
 
@@ -639,7 +722,7 @@ const createState = (): GameState => {
     tick: 0,
     nextId: 1,
     selectedMage,
-    unlockedMages: { water: false, fire: false, wind: true, earth: false, void: false },
+    unlockedMages: createDefaultUnlockedMages(),
     terrain,
     player: createPlayer(terrain, selectedMage),
     projectiles: [],
@@ -669,6 +752,10 @@ const createState = (): GameState => {
       mageCards: [],
       startRect: null,
       shopRect: null,
+      loginRect: null,
+      registerRect: null,
+      rankingRect: null,
+      logoutRect: null,
       upgradeCards: [],
       hudUpgradeIcons: [],
       shopCards: [],
@@ -684,10 +771,60 @@ const createState = (): GameState => {
       queue: [],
       returnStatus: 'playing',
     },
+    auth: createGuestAuth(),
+    menuOverlay: null,
   };
 };
 
 export const createGameState = createState;
+
+export const setAuthState = (state: GameState, auth: Partial<AuthState>) => {
+  state.auth = { ...state.auth, ...auth };
+};
+
+export const consumeMenuOverlayRequest = (state: GameState): MenuOverlay | null => {
+  const nextOverlay = state.menuOverlay;
+  state.menuOverlay = null;
+  return nextOverlay;
+};
+
+export const exportAccountProgress = (state: GameState): PersistedAccountProgress => normalizeAccountProgress({
+  souls: state.souls,
+  selectedMage: state.selectedMage,
+  unlockedMages: state.unlockedMages,
+  shopItems: state.shopItems.map((item) => ({
+    id: item.id,
+    owned: item.owned,
+    active: item.active,
+  })),
+  currentScore: state.score,
+  currentWave: state.wave.number,
+});
+
+export const applyAccountProgress = (state: GameState, progress: PersistedAccountProgress) => {
+  const normalized = normalizeAccountProgress(progress);
+  const auth = { ...state.auth };
+  const fresh = createState();
+  Object.assign(state, fresh);
+  state.auth = auth;
+  state.menuOverlay = null;
+  state.souls = normalized.souls;
+  state.unlockedMages = { ...normalized.unlockedMages, wind: true };
+  state.selectedMage = state.unlockedMages[normalized.selectedMage] ? normalized.selectedMage : 'wind';
+
+  const savedItems = new Map(normalized.shopItems.map((item) => [item.id, item]));
+  state.shopItems = createShopItems().map((item) => {
+    const saved = savedItems.get(item.id);
+    return {
+      ...item,
+      owned: saved?.owned ?? false,
+      active: saved?.owned ? Boolean(saved.active) : false,
+    };
+  });
+
+  state.player = createPlayer(state.terrain, state.selectedMage);
+  applyOwnedShopItemsToPlayer(state);
+};
 
 const applyOwnedShopItemsToPlayer = (state: GameState) => {
   state.player.damageTakenMultiplier = 1;
@@ -767,8 +904,10 @@ const returnToMenu = (state: GameState) => {
   const souls = state.souls;
   const shopItems = state.shopItems.map((item) => ({ ...item }));
   const unlockedMages = { ...state.unlockedMages };
+  const auth = { ...state.auth };
   const fresh = createState();
   Object.assign(state, fresh);
+  state.auth = auth;
   state.selectedMage = selectedMage;
   state.souls = souls;
   state.shopItems = shopItems;
@@ -793,8 +932,10 @@ const resetRun = (state: GameState) => {
   const souls = state.souls;
   const shopItems = state.shopItems.map((item) => ({ ...item }));
   const unlockedMages = { ...state.unlockedMages };
+  const auth = { ...state.auth };
   const fresh = createState();
   Object.assign(state, fresh);
+  state.auth = auth;
   state.selectedMage = selectedMage;
   state.souls = souls;
   state.shopItems = shopItems;
@@ -836,7 +977,7 @@ const applyAscension = (state: GameState, card: UpgradeCard) => {
       state.effects.absorbent = true;
       break;
     case 'antiAircraft':
-      state.effects.frictionRadiusMultiplier *= 1.8;
+      state.effects.frictionRadiusMultiplier *= 2;
       break;
     case 'avenger':
       state.effects.avenger = true;
@@ -911,9 +1052,10 @@ const applyAscension = (state: GameState, card: UpgradeCard) => {
       break;
     case 'ramDestroyer':
       state.effects.fragmentationSizeMultiplier *= 1.75;
+      state.effects.fragmentationDamageBonus = Math.max(state.effects.fragmentationDamageBonus, 2);
       break;
     case 'sadistic':
-      state.effects.reflectDamage += 1;
+      state.effects.reflectDamage = 1;
       break;
     case 'speculator':
       state.effects.superCrits = true;
@@ -939,7 +1081,9 @@ const applyAscension = (state: GameState, card: UpgradeCard) => {
 function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
   const card = getUpgradeCard(upgradeId);
   state.upgradeCounts[upgradeId] = (state.upgradeCounts[upgradeId] ?? 0) + 1;
-  const commonBonus = card.rarity === 'common' ? state.effects.commonEffectivenessBonus : 0;
+  const commonBonus = card.rarity === 'common' && upgradeId !== 'renew' && upgradeId !== 'stability'
+    ? state.effects.commonEffectivenessBonus
+    : 0;
   const scale = 1 + commonBonus;
 
   switch (upgradeId) {
@@ -953,7 +1097,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       applyMaxHealthUpgrade(state, Math.round(10 * scale), Math.round(10 * scale));
       break;
     case 'impulse':
-      state.player.jumpPower *= 1 + 0.3 * scale;
+      state.player.jumpPower *= 1 + 0.1 * scale;
       break;
     case 'renew':
       state.player.hp = state.player.maxHp;
@@ -986,7 +1130,6 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       break;
     case 'fragmentation':
       state.effects.fragmentationCount = state.effects.fragmentationCount === 0 ? 3 : state.effects.fragmentationCount + 1;
-      state.effects.fragmentationDamageBonus += 1;
       break;
     case 'friction':
       state.effects.frictionShots += 1;
@@ -1005,13 +1148,13 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.uncommonChanceBonus += 0.05;
       break;
     case 'orb':
-      state.effects.healOrbChance += 0.05;
+      state.effects.healOrbChance = Math.max(state.effects.healOrbChance, 0.05);
       break;
     case 'precision':
       state.effects.critBonus += 0.5;
       break;
     case 'rage':
-      state.effects.ragePower += 0.12;
+      state.effects.ragePower += 1;
       break;
     case 'regrowth':
       state.effects.regrowthRate += 0.0007;
@@ -1026,23 +1169,26 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.player.moveSpeed *= 1.4;
       break;
     case 'thunderbolt':
-      state.effects.thunderboltCount += 2;
-      state.effects.thunderboltTimer = 1.6;
+      state.effects.thunderboltCount += 1;
+      state.effects.thunderboltDamageBonus += 4;
+      reduceThunderboltCooldown(state, 0.1);
+      state.effects.thunderboltTimer = Math.min(state.effects.thunderboltTimer, state.effects.thunderboltInterval);
       break;
     case 'appraisal':
       state.effects.appraisalChoices += 1;
       break;
-    case 'barrier':
-      state.effects.barrierCooldown = state.effects.barrierCooldown > 0 ? Math.max(2.6, state.effects.barrierCooldown - 0.4) : 6;
+    case 'barrier': {
+      const barrierStacks = Math.max(1, state.upgradeCounts.barrier ?? 1);
+      state.effects.barrierCooldown = Math.max(0.25, 16 / barrierStacks);
       state.effects.barrierReady = true;
       state.effects.barrierTimer = state.effects.barrierCooldown;
       break;
+    }
     case 'cold':
       state.effects.coldPerHit += 0.01;
       break;
     case 'fragmentationPlus':
       state.effects.fragmentationCount = Math.max(3, state.effects.fragmentationCount) + 3;
-      state.effects.fragmentationDamageBonus += 3;
       break;
     case 'frictionPlus':
       state.effects.frictionShots += 1;
@@ -1060,8 +1206,10 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.bodyDamage += 40;
       break;
     case 'thunderboltPlus':
-      state.effects.thunderboltCount += 6;
-      state.effects.thunderboltTimer = 1.2;
+      state.effects.thunderboltCount += 1;
+      state.effects.thunderboltDamageBonus += 8;
+      reduceThunderboltCooldown(state, 0.2);
+      state.effects.thunderboltTimer = Math.min(state.effects.thunderboltTimer, state.effects.thunderboltInterval);
       break;
     case 'tome':
       state.effects.commonEffectivenessBonus += 0.35;
@@ -1201,6 +1349,26 @@ export const handlePointerClick = (state: GameState, point: Vec) => {
 
     if (state.ui.shopRect && pointInRect(point, state.ui.shopRect)) {
       openShop(state);
+      return;
+    }
+
+    if (state.ui.loginRect && pointInRect(point, state.ui.loginRect)) {
+      state.menuOverlay = 'login';
+      return;
+    }
+
+    if (state.ui.registerRect && pointInRect(point, state.ui.registerRect)) {
+      state.menuOverlay = 'register';
+      return;
+    }
+
+    if (state.ui.rankingRect && pointInRect(point, state.ui.rankingRect)) {
+      state.menuOverlay = 'ranking';
+      return;
+    }
+
+    if (state.ui.logoutRect && pointInRect(point, state.ui.logoutRect)) {
+      state.menuOverlay = 'logout';
     }
     return;
   }
@@ -1446,30 +1614,32 @@ const enemyTouchesPlayer = (state: GameState, enemy: Enemy) => {
 
 const updateThunderbolts = (state: GameState) => {
   if (state.effects.thunderboltCount <= 0 || state.enemies.length === 0) return;
-  for (let i = 0; i < state.effects.thunderboltCount; i += 1) {
-    const target = getThunderStrikeGroundTarget(state, 32 + Math.random() * (state.width - 64));
-    const lineFrom = {
-      x: target.x + (Math.random() * 60 - 30),
-      y: 20,
-    };
-    const damage = getThunderboltDamage(state);
-    spawnLightningStrike(state, target, getThunderboltStyle(state), lineFrom, 62);
-    createProjectile(state, {
-      pos: target,
-      lineFrom,
-      vel: { x: 0, y: 0 },
-      radius: 2,
-      damage,
-      color: getThunderboltColor(state),
-      life: 0.02,
-      owner: 'player',
-      behavior: 'thunder',
-      pierce: 1,
-      hitIds: [],
-      aoeRadius: 0,
-      homingStrength: 0,
-    });
-  }
+
+  const flashRadius = state.effects.godOfThunder ? 70 : 56;
+  const impactRadius = getThunderboltStrikeRadius(state);
+  const boltWidth = getThunderboltBoltWidth(state);
+  const target = getThunderStrikeGroundTarget(state, 32 + Math.random() * (state.width - 64));
+  const lineFrom = {
+    x: target.x + (Math.random() * 44 - 22),
+    y: 18,
+  };
+
+  spawnLightningStrike(state, target, getThunderboltStyle(state), lineFrom, flashRadius, boltWidth);
+  createProjectile(state, {
+    pos: target,
+    lineFrom,
+    vel: { x: 0, y: 0 },
+    radius: boltWidth,
+    damage: getThunderboltDamage(state),
+    color: getThunderboltColor(state),
+    life: 0.02,
+    owner: 'player',
+    behavior: 'thunder',
+    pierce: 1,
+    hitIds: [],
+    aoeRadius: impactRadius,
+    homingStrength: 0,
+  });
 };
 
 
@@ -1567,18 +1737,19 @@ const releaseQueuedWispShots = (state: GameState, dt: number) => {
     createProjectile(state, {
       pos: { ...shot.origin },
       vel: { x: dir.x * shot.speed, y: dir.y * shot.speed },
-      radius: 4,
+      radius: shot.radius,
       damage: Math.max(1, Math.round(shot.damage * critRoll.multiplier)),
       baseDamage: Math.max(1, Math.round(shot.damage)),
       critKind: critRoll.kind,
       color: shot.color,
       life: 6.5,
       owner: 'player',
-      behavior: 'wisp',
-      pierce: 0,
+      behavior: shot.behavior,
+      pierce: shot.pierce,
       hitIds: [],
-      aoeRadius: 0,
-      homingStrength: 0,
+      aoeRadius: shot.aoeRadius,
+      homingStrength: shot.homingStrength,
+      fromUpgrade: 'willOWisp',
       projectileHp: 1 + state.effects.projectileDurability,
       projectileMaxHp: 1 + state.effects.projectileDurability,
     });
@@ -1601,8 +1772,14 @@ const updateWisps = (state: GameState, dt: number, input: InputState) => {
   if (!primaryTarget) return;
 
   const shotSpacing = state.effects.enchanter ? 0.04 : 0.12;
-  const projectileSpeed = state.player.projectileSpeed * 0.55 * attackSpeedFactor;
-  const damage = Math.max(1, Math.round(state.player.damage * 0.5));
+  const wispMage = getWispMageDefinition(state);
+  const projectileSpeed = wispMage.projectileSpeed * 0.5;
+  const damage = Math.max(1, Math.round(state.player.damage * getCurrentRageMultiplier(state) * 0.5));
+  const radius = Math.max(4, wispMage.projectileRadius * 0.9);
+  const behavior = wispMage.behavior;
+  const aoeRadius = behavior === 'explosive' ? wispMage.explosionRadius : 0;
+  const homingStrength = behavior === 'homing' ? wispMage.homingStrength : 0;
+  const pierce = behavior === 'pierce' ? 999 : 0;
 
   ensureWispFollowers(state);
 
@@ -1616,7 +1793,12 @@ const updateWisps = (state: GameState, dt: number, input: InputState) => {
       target: { ...primaryTarget },
       speed: projectileSpeed,
       damage,
-      color: '#f5d0fe',
+      color: wispMage.color,
+      radius,
+      behavior,
+      aoeRadius,
+      homingStrength,
+      pierce,
     };
     state.queuedWispShots.push(queuedShot);
   }
@@ -1675,7 +1857,8 @@ const updateEnemies = (state: GameState, dt: number) => {
 
   for (const enemy of state.enemies) {
     enemy.bodyHitCooldown = Math.max(0, enemy.bodyHitCooldown - dt);
-    enemy.bleed = Math.max(0, enemy.bleed - dt);
+    enemy.meleeAttackCooldown = Math.max(0, enemy.meleeAttackCooldown - dt);
+    enemy.bleed = Number.isFinite(enemy.bleed) ? Math.max(0, enemy.bleed - dt) : enemy.bleed;
     enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
     enemy.spawnElapsed = Math.min(enemy.spawnDuration, enemy.spawnElapsed + dt);
 
@@ -1851,7 +2034,12 @@ const updateEnemies = (state: GameState, dt: number) => {
     }
 
     if (enemyTouchesPlayer(state, enemy)) {
-      damagePlayer(state, enemy.damage, enemy);
+      if (enemy.isRanged) {
+        damagePlayer(state, enemy.damage, enemy);
+      } else if (enemy.meleeAttackCooldown <= 0) {
+        damagePlayer(state, enemy.damage, enemy);
+        enemy.meleeAttackCooldown = 1;
+      }
       if (state.effects.bodyDamage > 0 && enemy.bodyHitCooldown <= 0) {
         damageEnemy(state, enemy, state.effects.bodyDamage, '#f97316');
         enemy.bodyHitCooldown = 0.45;
@@ -1920,8 +2108,11 @@ const resolveProjectileClash = (state: GameState, projectile: Projectile, enemyP
   } else {
     projectile.pos.x += projectile.vel.x * 0.03;
     projectile.pos.y += projectile.vel.y * 0.03;
-    if (state.effects.pacMan && enemyProjectileHp <= 0) {
-      projectile.damage += 1 + Math.round(projectile.chargeBonus ?? 0);
+    if (state.effects.pacMan && projectile.behavior !== 'thunder') {
+      projectile.damage = Math.max(1, Math.round(projectile.damage * 1.25));
+      if (typeof projectile.baseDamage === 'number') {
+        projectile.baseDamage = Math.max(1, Math.round(projectile.baseDamage * 1.25));
+      }
     }
   }
 };
@@ -1931,15 +2122,19 @@ const updateProjectiles = (state: GameState, dt: number) => {
     projectile.life -= dt;
 
     if (projectile.behavior === 'thunder') {
-      const from = projectile.lineFrom ?? { x: projectile.pos.x, y: 20 };
-      const hitTarget = getThunderHitTarget(state, from, projectile.pos);
-      if (hitTarget) {
-        const hitResult = resolveProjectileHit(state, hitTarget, projectile);
-        damageEnemy(state, hitTarget, hitResult.damage, hitResult.color);
-        addImpact(state, hitTarget.pos, Math.max(18, hitTarget.width * 0.85), hitResult.color, 0.22);
-      } else {
-        addImpact(state, projectile.pos, 28, projectile.color, 0.18);
+      const impactRadius = Math.max(16, projectile.aoeRadius || getThunderboltStrikeRadius(state));
+      const strikeFrom = projectile.lineFrom ?? { x: projectile.pos.x, y: 18 };
+      const boltWidth = Math.max(12, projectile.radius || getThunderboltBoltWidth(state));
+      const firstEnemyHit = getThunderHitTarget(state, strikeFrom, projectile.pos, boltWidth);
+      let hitSomething = false;
+
+      if (firstEnemyHit) {
+        const hitResult = resolveProjectileHit(state, firstEnemyHit, projectile);
+        damageEnemy(state, firstEnemyHit, hitResult.damage, hitResult.color, true, projectile);
+        hitSomething = true;
       }
+
+      addImpact(state, projectile.pos, impactRadius, projectile.color, hitSomething ? 0.22 : 0.18);
       projectile.life = 0;
       continue;
     }
@@ -2053,7 +2248,7 @@ const updateProjectiles = (state: GameState, dt: number) => {
 
       projectile.hitIds.push(enemy.id);
       const hitResult = resolveProjectileHit(state, enemy, projectile);
-      damageEnemy(state, enemy, hitResult.damage, hitResult.color);
+      damageEnemy(state, enemy, hitResult.damage, hitResult.color, true, projectile);
 
       if (projectile.behavior === 'explosive') {
         explodeAt(
@@ -2063,12 +2258,15 @@ const updateProjectiles = (state: GameState, dt: number) => {
           Math.max(1, Math.round(hitResult.damage * 0.3)),
           hitResult.color,
           [enemy.id],
+          projectile,
         );
       } else if (projectile.behavior === 'meteor' || projectile.behavior === 'friction' || projectile.behavior === 'fragment') {
-        explodeAt(state, { x: projectile.pos.x, y: projectile.pos.y }, projectile.aoeRadius, Math.max(1, Math.round(hitResult.damage * 0.8)), hitResult.color);
+        explodeAt(state, { x: projectile.pos.x, y: projectile.pos.y }, projectile.aoeRadius, Math.max(1, Math.round(hitResult.damage * 0.8)), hitResult.color, [], projectile);
       }
 
-      if (projectile.pierce > 0) {
+      if (projectile.owner === 'player' && projectile.behavior !== 'pierce') {
+        projectile.life = 0;
+      } else if (projectile.pierce > 0) {
         projectile.pierce -= 1;
       } else {
         projectile.life = 0;
@@ -2082,7 +2280,7 @@ const updateProjectiles = (state: GameState, dt: number) => {
     if (hitGround || hitWall) {
       maybeSpawnBlackHole(state, projectile);
       if (projectile.behavior === 'friction' || projectile.behavior === 'fragment') {
-        explodeAt(state, { x: projectile.pos.x, y: Math.min(projectile.pos.y, groundY) }, projectile.aoeRadius, projectile.damage, projectile.color);
+        explodeAt(state, { x: projectile.pos.x, y: Math.min(projectile.pos.y, groundY) }, projectile.aoeRadius, projectile.damage, projectile.color, [], projectile);
       }
       projectile.life = 0;
     }

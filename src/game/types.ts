@@ -46,6 +46,8 @@ export type EnemyKind =
 
 export type GameStatus = 'menu' | 'playing' | 'paused' | 'between' | 'death' | 'shop' | 'ascension';
 
+export type MenuOverlay = 'login' | 'register' | 'ranking' | 'logout';
+
 export type UpgradeRarity = 'common' | 'uncommon' | 'epic' | 'ascension';
 
 export type InputState = {
@@ -124,6 +126,7 @@ export type Projectile = {
   projectileHp?: number;
   projectileMaxHp?: number;
   fromUpgrade?: string;
+  sourceEnemyId?: number;
   chargeBonus?: number;
   tickTimer?: number;
 };
@@ -159,6 +162,7 @@ export type Enemy = {
   bleedStacks: number;
   bleedTickTimer: number;
   bodyHitCooldown: number;
+  meleeAttackCooldown: number;
   deathHandled: boolean;
   marksmanCritConsumed: boolean;
   spawnStartY: number;
@@ -197,6 +201,7 @@ export type LightningStrike = {
   maxLife: number;
   style?: 'thunder' | 'soul' | 'god';
   flashRadius?: number;
+  boltWidth?: number;
 };
 
 export type QueuedFrictionShot = {
@@ -212,6 +217,11 @@ export type QueuedWispShot = {
   speed: number;
   damage: number;
   color: string;
+  radius: number;
+  behavior: SpellBehavior;
+  aoeRadius: number;
+  homingStrength: number;
+  pierce: number;
 };
 
 export type WispFollower = {
@@ -266,6 +276,10 @@ export type UiRects = {
   mageCards: Array<{ id: MageId; rect: Rect }>;
   startRect: Rect | null;
   shopRect: Rect | null;
+  loginRect: Rect | null;
+  registerRect: Rect | null;
+  rankingRect: Rect | null;
+  logoutRect: Rect | null;
   upgradeCards: Array<{ id: UpgradeId; rect: Rect }>;
   hudUpgradeIcons: Array<{ id: UpgradeId; rect: Rect }>;
   shopCards: Array<{ id: ShopItemId; rect: Rect }>;
@@ -297,6 +311,7 @@ export type RunEffects = {
   thunderboltCount: number;
   thunderboltTimer: number;
   thunderboltInterval: number;
+  thunderboltDamageBonus: number;
   thunderboltDamageMultiplier: number;
   godOfThunder: boolean;
   appraisalChoices: number;
@@ -364,6 +379,15 @@ export type AscensionNoticeState = {
   returnStatus: Exclude<GameStatus, 'ascension'>;
 };
 
+export type AuthState = {
+  isLoggedIn: boolean;
+  userId: string | null;
+  login: string | null;
+  nickname: string | null;
+  highScore: number;
+  highestWave: number;
+};
+
 export type GameState = {
   width: number;
   height: number;
@@ -395,4 +419,6 @@ export type GameState = {
   pointer: Vec;
   effects: RunEffects;
   ascensionNotice: AscensionNoticeState;
+  auth: AuthState;
+  menuOverlay: MenuOverlay | null;
 };
