@@ -24,7 +24,7 @@ export const MAGES: MageDefinition[] = [
     damage: 3,
     passive: 'Explosive impact',
     summary: 'Every hit bursts in a small area around the target.',
-    fireInterval: 0.82,
+    fireInterval: 1.025,
     projectileSpeed: 455,
     projectileRadius: 7,
     behavior: 'explosive',
@@ -38,7 +38,7 @@ export const MAGES: MageDefinition[] = [
     damage: 6,
     passive: 'Bursting gusts',
     summary: 'Projectiles hit only the first monster they collide with.',
-    fireInterval: 0.68,
+    fireInterval: 0.85,
     projectileSpeed: 480,
     projectileRadius: 6,
     behavior: 'normal',
@@ -60,6 +60,20 @@ export const MAGES: MageDefinition[] = [
     homingStrength: 5,
   },
   {
+    id: 'avatar',
+    name: 'Avatar Mage',
+    color: '#a855f7',
+    damage: 4,
+    passive: 'Chaotic elements',
+    summary: 'Each attack randomly launches a Fire, Wind, Water, or Earth projectile.',
+    fireInterval: 0.9,
+    projectileSpeed: 470,
+    projectileRadius: 7,
+    behavior: 'avatar',
+    explosionRadius: 0,
+    homingStrength: 0,
+  },
+  {
     id: 'void',
     name: 'Thunder Mage',
     color: '#facc15',
@@ -79,8 +93,8 @@ export const getMageDefinition = (id: MageId) => MAGES.find((mage) => mage.id ==
 
 export const createPlayer = (terrain: TerrainPoint[], mageId: MageId): Player => {
   const mage = getMageDefinition(mageId);
-  const width = 28;
-  const height = 44;
+  const width = 56;
+  const height = 88;
   const groundY = getGroundY(terrain, PLAYER_START_X);
 
   return {

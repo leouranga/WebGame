@@ -2,7 +2,7 @@ import { GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_
 import { createPlayer, getMageDefinition, MAGES } from '@/game/characters/mages';
 import { createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
-import { createProjectile, fireEnemyShot, firePlayerShot, rollCritical } from '@/game/spells/projectiles';
+import { createProjectile, fireEnemyShot, firePlayerShot, resolvePlayerProjectileProfile, rollCritical } from '@/game/spells/projectiles';
 import { clamp, createTerrain, getGroundY, lerp } from '@/game/terrain';
 import { createDefaultUnlockedMages, normalizeAccountProgress, type PersistedAccountProgress } from '@/lib/progress';
 import type {
@@ -75,8 +75,14 @@ const getRageMissingRatio = (state: GameState) => {
   return Math.max(0, (0.5 - hpRatio) / 0.5);
 };
 
-const getWispMageDefinition = (state: GameState) =>
-  state.player.mageId === 'void' ? getMageDefinition('wind') : getMageDefinition(state.player.mageId);
+const getWispMageDefinition = (state: GameState) => {
+  if (state.player.mageId === 'void') return getMageDefinition('wind');
+  if (state.player.mageId === 'avatar') {
+    const pool: MageId[] = ['fire', 'wind', 'water', 'earth'];
+    return getMageDefinition(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  return getMageDefinition(state.player.mageId);
+};
 const EXORCIST_RADIUS = 100;
 const MAGE_UNLOCK_COST = 25;
 const BRAIN_BOSS_BLAST_RADIUS = 140;
@@ -334,22 +340,32 @@ const getCurrentDefenseMultiplier = (state: GameState) => {
   return state.player.damageTakenMultiplier * bunker * resist;
 };
 
-const spawnRingProjectiles = (state: GameState, count: number, damage: number, color: string, radius = 5) => {
+const spawnProtectorBurst = (state: GameState) => {
+  const count = 30;
+  const profile = resolvePlayerProjectileProfile(state, { allowThunder: false });
+  const sizeMultiplier = state.effects.whiteDwarf ? 1 : state.effects.projectileSizeMultiplier;
+  const damage = Math.max(1, Math.round(state.player.damage * getCurrentRageMultiplier(state)));
+  const speed = Math.max(280, profile.projectileSpeed * 0.8);
+
   for (let i = 0; i < count; i += 1) {
     const angle = (Math.PI * 2 * i) / count;
     createProjectile(state, {
       pos: { x: state.player.pos.x, y: state.player.pos.y - 6 },
-      vel: { x: Math.cos(angle) * 360, y: Math.sin(angle) * 360 },
-      radius,
+      vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
+      radius: profile.projectileRadius * sizeMultiplier,
       damage,
-      color,
-      life: 1.2,
+      baseDamage: damage,
+      color: profile.color,
+      life: 1.35,
       owner: 'player',
-      behavior: 'fragment',
-      pierce: 0,
+      behavior: profile.behavior,
+      pierce: (profile.behavior === 'pierce' ? 999 : 0) + state.effects.projectileDurability,
       hitIds: [],
-      aoeRadius: 20,
-      homingStrength: 0,
+      aoeRadius: profile.aoeRadius * state.effects.frictionRadiusMultiplier,
+      homingStrength: profile.homingStrength,
+      projectileHp: 1 + state.effects.projectileDurability,
+      projectileMaxHp: 1 + state.effects.projectileDurability,
+      fromUpgrade: 'protector',
     });
   }
 };
@@ -372,7 +388,7 @@ const getAttackSpeedFactor = (state: GameState) => {
   return Math.max(0.85, Math.min(3.2, baseInterval / Math.max(0.06, getCurrentFireInterval(state))));
 };
 const getFrictionTravelThreshold = (state: GameState) => Math.max(56, 132 - Math.max(0, state.effects.frictionShots - 1) * 16);
-const getWaveSpawnCount = (waveNumber: number) => ((waveNumber === 1 || waveNumber === 50) ? 1 : Math.max(2, 2 + (waveNumber - 1) * 2));
+const getWaveSpawnCount = (waveNumber: number) => (waveNumber === 50 ? 1 : waveNumber === 1 ? 2 : Math.max(2, 2 + (waveNumber - 1) * 2));
 
 const beginDeathScreen = (state: GameState) => {
   state.status = 'death';
@@ -405,7 +421,7 @@ const damagePlayer = (state: GameState, rawAmount: number, attacker?: Enemy | Pr
       : PLAYER_I_FRAMES * state.effects.invulnMultiplier;
     addText(state, 'Blocked', { x: player.pos.x, y: player.pos.y - 28 }, '#93c5fd');
     if (state.effects.protector) {
-      spawnRingProjectiles(state, 8, Math.max(4, Math.round(player.damage * 0.8)), '#93c5fd', 4);
+      spawnProtectorBurst(state);
     }
     return;
   }
@@ -640,6 +656,54 @@ const clampEnemyToArena = (state: GameState, enemy: Enemy) => {
   const floorOffset = enemy.isRanged ? 0.42 : 0.45;
   const floor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * floorOffset;
   enemy.pos.y = clamp(enemy.pos.y, ceiling, floor);
+};
+
+
+const resolvePlayerEnemyCollision = (state: GameState, enemy: Enemy) => {
+  if (enemy.hp <= 0 || enemy.deathHandled) return;
+
+  const player = state.player;
+  const playerCenterY = player.pos.y - 6;
+  const dx = player.pos.x - enemy.pos.x;
+  const dy = playerCenterY - enemy.pos.y;
+  const overlapX = player.width / 2 + enemy.width / 2 - Math.abs(dx);
+  const overlapY = player.height / 2 + enemy.height / 2 - Math.abs(dy);
+
+  if (overlapX <= 0 || overlapY <= 0) return;
+
+  const enemyShare = state.effects.bulldozer ? 0.56 : 0.24;
+  const playerShare = 1 - enemyShare;
+
+  if (overlapX <= overlapY * 1.15) {
+    const sx = dx >= 0 ? 1 : -1;
+    const separation = overlapX + 0.8;
+    player.pos.x += sx * separation * playerShare;
+    enemy.pos.x -= sx * separation * enemyShare;
+    if (player.vel.x * sx < 0) player.vel.x = 0;
+  } else {
+    const sy = dy >= 0 ? 1 : -1;
+    const separation = overlapY + 0.6;
+    const verticalEnemyShare = state.effects.bulldozer ? 0.38 : 0.12;
+    const verticalPlayerShare = 1 - verticalEnemyShare;
+    player.pos.y += sy * separation * verticalPlayerShare;
+    enemy.pos.y -= sy * separation * verticalEnemyShare;
+    if (player.vel.y * sy < 0) player.vel.y = 0;
+  }
+
+  player.pos.x = clamp(player.pos.x, player.width / 2 + 8, state.width - player.width / 2 - 8);
+  const playerCeiling = player.height / 2 + 8;
+  const playerGround = getGroundY(state.terrain, player.pos.x) - player.height / 2;
+  player.pos.y = clamp(player.pos.y, playerCeiling, playerGround);
+  clampEnemyToArena(state, enemy);
+};
+
+const resolvePlayerEnemyCollisions = (state: GameState) => {
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const enemy of state.enemies) {
+      if (enemy.kind === 'brainboss') continue;
+      resolvePlayerEnemyCollision(state, enemy);
+    }
+  }
 };
 
 const separateEnemies = (state: GameState) => {
@@ -1115,7 +1179,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       state.effects.projectileDurability += Math.max(1, Math.round(scale));
       break;
     case 'swift':
-      state.player.moveSpeed *= 1 + 0.2 * scale;
+      state.player.moveSpeed *= 1 + 0.1 * scale;
       break;
     case 'catalystPlus':
       state.player.damage += 4;
@@ -1166,7 +1230,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       syncPlayerSize(state, Math.max(0.45, state.player.width / state.player.baseWidth * 0.9));
       break;
     case 'swiftPlus':
-      state.player.moveSpeed *= 1.4;
+      state.player.moveSpeed *= 1.2;
       break;
     case 'thunderbolt':
       state.effects.thunderboltCount += 1;
@@ -2045,18 +2109,21 @@ const updateEnemies = (state: GameState, dt: number) => {
         enemy.bodyHitCooldown = 0.45;
       }
       if (!enemy.isRanged) {
-        const pushStrength = state.effects.bulldozer ? 24 : 3.25;
+        const movementFactor = clamp(Math.abs(player.vel.x) / 180, 0.75, 1.35);
+        const pushStrength = state.effects.bulldozer ? 12.5 : 3.4 * movementFactor;
         const push = normalize({
           x: player.pos.x - enemy.pos.x,
-          y: ((player.pos.y - 6) - enemy.pos.y) * (state.effects.bulldozer ? 0.6 : 0.35),
+          y: ((player.pos.y - 6) - enemy.pos.y) * (state.effects.bulldozer ? 0.55 : 0.2),
         });
         enemy.pos.x -= push.x * pushStrength;
         enemy.pos.y -= push.y * pushStrength;
       }
+      resolvePlayerEnemyCollision(state, enemy);
     }
   }
 
   separateEnemies(state);
+  resolvePlayerEnemyCollisions(state);
 
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0 && !enemy.deathHandled) killEnemy(state, enemy);
@@ -2169,8 +2236,9 @@ const updateProjectiles = (state: GameState, dt: number) => {
       const target = nearestEnemy(state, projectile.pos, 260);
       if (target) {
         const desired = normalize({ x: target.pos.x - projectile.pos.x, y: target.pos.y - projectile.pos.y });
-        projectile.vel.x = lerp(projectile.vel.x, desired.x * state.player.projectileSpeed, dt * projectile.homingStrength);
-        projectile.vel.y = lerp(projectile.vel.y, desired.y * state.player.projectileSpeed, dt * projectile.homingStrength);
+        const homingSpeed = Math.max(1, Math.hypot(projectile.vel.x, projectile.vel.y));
+        projectile.vel.x = lerp(projectile.vel.x, desired.x * homingSpeed, dt * projectile.homingStrength);
+        projectile.vel.y = lerp(projectile.vel.y, desired.y * homingSpeed, dt * projectile.homingStrength);
       }
     }
 

@@ -39,7 +39,7 @@ export const COMMON_UPGRADES: UpgradeCard[] = [
     "⬢",
     "#f8fafc",
   ),
-  card("swift", "Swift", "Movement Speed +20%", "common", "➜", "#f8fafc"),
+  card("swift", "Swift", "Movement Speed +10%", "common", "➜", "#f8fafc"),
 ];
 
 export const UNCOMMON_UPGRADES: UpgradeCard[] = [
@@ -124,7 +124,7 @@ export const UNCOMMON_UPGRADES: UpgradeCard[] = [
   card(
     "swiftPlus",
     "Swift+",
-    "Movement Speed +40%",
+    "Movement Speed +20%",
     "uncommon",
     "➠",
     "#86efac",
@@ -175,7 +175,7 @@ export const EPIC_UPGRADES: UpgradeCard[] = [
   card(
     "frictionPlus",
     "Friction+",
-    "Running launches 1 explosive projectile upward much more often",
+    "Running launches 1 explosive projectile upward more often",
     "epic",
     "⇈",
     "#c084fc",
@@ -485,7 +485,7 @@ export const ASCENSIONS: UpgradeCard[] = [
   ),
   card("streamer", "Streamer", "Shoot a beam", "ascension", "═", "#f59e0b", {
     sourceId: "resonance",
-    threshold: 8,
+    threshold: 14,
   }),
   card(
     "tryhard",

@@ -304,8 +304,8 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
   const base = MONSTER_BASES[kind];
 
   const sizeScale = kind === "brainboss" ? 1 : 0.94 + Math.random() * 0.28;
-  const width = Math.round(base.width * sizeScale);
-  const height = Math.round(base.height * sizeScale);
+  const width = Math.round(base.width * sizeScale * 1.6);
+  const height = Math.round(base.height * sizeScale * 1.6);
   const healthBonus = kind === "brainboss" ? 0 : getWaveHealthBonus(wave);
   const damageBonus = kind === "brainboss" ? 0 : getWaveDamageBonus(wave);
   const speedScale = kind === "brainboss" ? 1 : 1 + (1 - sizeScale) * 0.22;
@@ -322,7 +322,7 @@ export const createEnemy = (nextId: number, wave: number): Enemy => {
     hp: Math.ceil(base.hp + healthBonus),
     maxHp: Math.ceil(base.hp + healthBonus),
     damage: base.damage + damageBonus,
-    speed: Math.round(base.speed * speedScale * (base.ranged ? 1 : 0.7)),
+    speed: Math.round(base.speed * speedScale * (base.ranged ? 1 : 0.63)),
     isRanged: base.ranged,
     preferredRange:
       base.preferredRange *

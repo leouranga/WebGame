@@ -15,7 +15,7 @@ export type TerrainPoint = {
   y: number;
 };
 
-export type MageId = 'water' | 'fire' | 'wind' | 'earth' | 'void';
+export type MageId = 'water' | 'fire' | 'wind' | 'earth' | 'void' | 'avatar';
 
 export type SpellBehavior =
   | 'normal'
@@ -29,6 +29,7 @@ export type SpellBehavior =
   | 'blackhole'
   | 'wisp'
   | 'thunder'
+  | 'avatar'
   | 'enemyLaser';
 
 export type EnemyKind =

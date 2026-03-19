@@ -39,7 +39,7 @@ export type RankingEntry = {
   highestWave: number;
 };
 
-export const MAGE_IDS: MageId[] = ['water', 'fire', 'wind', 'earth', 'void'];
+export const MAGE_IDS: MageId[] = ['water', 'fire', 'wind', 'earth', 'void', 'avatar'];
 export const SHOP_ITEM_IDS: ShopItemId[] = ['bulwarkStaff', 'vaultStaff', 'dealerStaff', 'scholarStaff'];
 
 const DEFAULT_UNLOCKED: PersistedUnlockedMages = {
@@ -48,6 +48,7 @@ const DEFAULT_UNLOCKED: PersistedUnlockedMages = {
   wind: true,
   earth: false,
   void: false,
+  avatar: false,
 };
 
 export const createDefaultUnlockedMages = (): PersistedUnlockedMages => ({ ...DEFAULT_UNLOCKED });
@@ -126,6 +127,8 @@ export const normalizeShopItemStates = (value: unknown): PersistedShopItemState[
 
   return normalized;
 };
+
+export const isDealerStaffActiveForProgress = (progress: Pick<PersistedAccountProgress, 'shopItems'>) => progress.shopItems.some((item) => item.id === 'dealerStaff' && item.owned && item.active);
 
 export const normalizeAccountProgress = (value: unknown): PersistedAccountProgress => {
   const defaults = createDefaultAccountProgress();

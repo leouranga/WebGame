@@ -377,61 +377,63 @@ const drawBarrierVeil = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (!state.effects.barrierReady) return;
 
   const { player, tick } = state;
-  const sway = Math.sin(tick * 0.018) * 3;
-  const veilTop = player.pos.y - player.height * 0.72;
-  const veilBottom = player.pos.y + player.height * 0.5;
-  const veilWidth = player.width * 0.95;
+  const auraRadiusX = player.width * 0.82;
+  const auraRadiusY = player.height * 0.88;
+  const pulse = 1 + Math.sin(tick * 0.02) * 0.06;
+  const centerY = player.pos.y - player.height * 0.04;
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
 
-  for (let i = 0; i < 3; i += 1) {
-    const offset = (i - 1) * 8;
-    const alpha = 0.12 - i * 0.022;
-    ctx.strokeStyle = `rgba(147,197,253,${alpha})`;
-    ctx.lineWidth = 12 - i * 2.5;
-    ctx.shadowColor = '#60a5fa';
-    ctx.shadowBlur = 16 - i * 3;
-    ctx.beginPath();
-    ctx.moveTo(player.pos.x - veilWidth + sway * 0.4, player.pos.y + offset);
-    ctx.bezierCurveTo(
-      player.pos.x - veilWidth * 0.72,
-      veilTop + offset,
-      player.pos.x + veilWidth * 0.1,
-      veilTop - 8 + offset,
-      player.pos.x + veilWidth * 0.62 + sway,
-      player.pos.y - player.height * 0.08 + offset,
-    );
-    ctx.stroke();
+  const outerGlow = ctx.createRadialGradient(
+    player.pos.x,
+    centerY,
+    auraRadiusX * 0.18,
+    player.pos.x,
+    centerY,
+    auraRadiusY * 1.35,
+  );
+  outerGlow.addColorStop(0, 'rgba(191,219,254,0.22)');
+  outerGlow.addColorStop(0.32, 'rgba(96,165,250,0.18)');
+  outerGlow.addColorStop(0.68, 'rgba(59,130,246,0.10)');
+  outerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = outerGlow;
+  ctx.beginPath();
+  ctx.ellipse(player.pos.x, centerY, auraRadiusX * 1.18 * pulse, auraRadiusY * 1.12 * pulse, 0, 0, Math.PI * 2);
+  ctx.fill();
 
+  for (let i = 0; i < 3; i += 1) {
+    const scale = 1 + i * 0.12;
+    ctx.strokeStyle = `rgba(147,197,253,${0.28 - i * 0.07})`;
+    ctx.lineWidth = 10 - i * 2.2;
+    ctx.shadowColor = '#60a5fa';
+    ctx.shadowBlur = 14 - i * 2.5;
     ctx.beginPath();
-    ctx.moveTo(player.pos.x + veilWidth - sway * 0.35, player.pos.y - 2 - offset * 0.5);
-    ctx.bezierCurveTo(
-      player.pos.x + veilWidth * 0.68,
-      veilBottom - 10 - offset,
-      player.pos.x - veilWidth * 0.12,
-      veilBottom + 6 - offset,
-      player.pos.x - veilWidth * 0.7 - sway,
-      player.pos.y + player.height * 0.18 - offset,
+    ctx.ellipse(
+      player.pos.x,
+      centerY,
+      auraRadiusX * scale * pulse,
+      auraRadiusY * scale * pulse,
+      Math.sin(tick * 0.01 + i) * 0.08,
+      0,
+      Math.PI * 2,
     );
     ctx.stroke();
   }
 
-  const mistCount = 6;
-  for (let i = 0; i < mistCount; i += 1) {
-    const phase = tick * 0.02 + i * 1.07;
-    const x = player.pos.x + Math.cos(phase) * (player.width * 0.52) + Math.sin(phase * 1.3) * 6;
-    const y = player.pos.y - player.height * 0.08 + Math.sin(phase * 0.9) * (player.height * 0.42);
-    const radiusX = 12 + (i % 3) * 4;
-    const radiusY = 20 + (i % 2) * 6;
-    const mist = ctx.createRadialGradient(x, y, 0, x, y, radiusY * 1.15);
+  for (let i = 0; i < 8; i += 1) {
+    const angle = tick * 0.012 + i * (Math.PI * 2 / 8);
+    const x = player.pos.x + Math.cos(angle) * auraRadiusX * 0.72;
+    const y = centerY + Math.sin(angle * 1.1) * auraRadiusY * 0.58;
+    const radius = 10 + (i % 3) * 3;
+    const mist = ctx.createRadialGradient(x, y, 0, x, y, radius * 2.3);
     mist.addColorStop(0, 'rgba(219,234,254,0.18)');
-    mist.addColorStop(0.36, 'rgba(96,165,250,0.12)');
-    mist.addColorStop(0.72, 'rgba(59,130,246,0.06)');
+    mist.addColorStop(0.36, 'rgba(96,165,250,0.14)');
+    mist.addColorStop(0.72, 'rgba(59,130,246,0.08)');
     mist.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = mist;
     ctx.beginPath();
-    ctx.ellipse(x, y, radiusX, radiusY, Math.sin(phase) * 0.35, 0, Math.PI * 2);
+    ctx.arc(x, y, radius * 2.3, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -1212,9 +1214,10 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.fillStyle = '#94a3b8';
   ctx.fillText(`Souls available: ${state.souls}`, state.width / 2, 128);
 
-  const cardWidth = 210;
+  const gap = MAGES.length > 5 ? 12 : 16;
+  const maxCardsWidth = state.width - 110;
+  const cardWidth = Math.min(210, Math.floor((maxCardsWidth - gap * (MAGES.length - 1)) / MAGES.length));
   const cardHeight = 198;
-  const gap = 16;
   const totalWidth = cardWidth * MAGES.length + gap * (MAGES.length - 1);
   const startX = (state.width - totalWidth) / 2;
   const y = 144;
@@ -1234,7 +1237,8 @@ const drawMenu = (ctx: CanvasRenderingContext2D, state: GameState) => {
       unlocked ? mage.color : '#fca5a5',
     );
 
-    drawMagePortrait(ctx, drawRect.x + drawRect.w / 2, drawRect.y + 52, 82, unlocked ? mage.color : 'rgba(148,163,184,0.55)');
+    const portraitSize = Math.min(82, cardWidth * 0.4);
+    drawMagePortrait(ctx, drawRect.x + drawRect.w / 2, drawRect.y + 52, portraitSize, unlocked ? mage.color : 'rgba(148,163,184,0.55)');
 
     ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';

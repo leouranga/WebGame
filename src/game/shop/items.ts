@@ -22,7 +22,7 @@ export const createShopItems = (): ShopItem[] => [
   {
     id: "dealerStaff",
     name: "Dealer Staff",
-    description: "Upgrade rerolls become free.",
+    description: "Upgrade rerolls become free, but this run cannot enter the ranking.",
     color: "#c084fc",
     cost: 50,
     owned: false,

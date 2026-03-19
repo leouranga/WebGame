@@ -64,6 +64,54 @@ export const rollCritical = (state: GameState): { multiplier: number; kind: Crit
 
 export const consumeCriticalMultiplier = (state: GameState) => rollCritical(state).multiplier;
 
+type ResolvedPlayerProjectile = {
+  mageId: 'water' | 'fire' | 'wind' | 'earth' | 'void' | 'avatar';
+  behavior: Projectile['behavior'];
+  projectileSpeed: number;
+  projectileRadius: number;
+  color: string;
+  aoeRadius: number;
+  homingStrength: number;
+};
+
+const AVATAR_MAGE_POOL = ['fire', 'wind', 'water', 'earth'] as const;
+
+export const resolvePlayerProjectileProfile = (
+  state: GameState,
+  options: { allowThunder?: boolean } = {},
+): ResolvedPlayerProjectile => {
+  const { allowThunder = true } = options;
+  const playerMageId = state.player.mageId;
+  const chosenMageId = playerMageId === 'avatar'
+    ? AVATAR_MAGE_POOL[Math.floor(Math.random() * AVATAR_MAGE_POOL.length)]
+    : playerMageId;
+
+  const chosenMage = getMageDefinition(chosenMageId);
+  if (chosenMage.behavior === 'thunder' && !allowThunder) {
+    const fallback = getMageDefinition('wind');
+    const thunderMage = getMageDefinition('void');
+    return {
+      mageId: playerMageId,
+      behavior: 'normal',
+      projectileSpeed: fallback.projectileSpeed,
+      projectileRadius: fallback.projectileRadius,
+      color: thunderMage.color,
+      aoeRadius: 0,
+      homingStrength: 0,
+    };
+  }
+
+  return {
+    mageId: chosenMage.id,
+    behavior: chosenMage.behavior,
+    projectileSpeed: chosenMage.projectileSpeed,
+    projectileRadius: chosenMage.projectileRadius,
+    color: chosenMage.color,
+    aoeRadius: chosenMage.behavior === 'explosive' ? chosenMage.explosionRadius : 0,
+    homingStrength: chosenMage.behavior === 'homing' ? chosenMage.homingStrength : 0,
+  };
+};
+
 export const firePlayerShot = (state: GameState, aim: Vec) => {
   const player = state.player;
   const sizeMultiplier = state.effects.whiteDwarf ? 1 : state.effects.projectileSizeMultiplier;
@@ -74,7 +122,9 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
   const damage = Math.max(1, Math.round(baseDamage * critRoll.multiplier));
   state.effects.attackCharges = 0;
 
-  if (player.behavior === 'thunder') {
+  const profile = resolvePlayerProjectileProfile(state, { allowThunder: true });
+
+  if (profile.behavior === 'thunder') {
     const baseMageDamage = getMageDefinition(player.mageId).damage;
     const thunderBaseDamage = Math.max(1, Math.round((26 + Math.max(0, player.damage - baseMageDamage)) * nonCritDamageMultiplier * state.effects.thunderboltDamageMultiplier));
     const thunderDamage = Math.max(1, Math.round(thunderBaseDamage * critRoll.multiplier));
@@ -152,19 +202,19 @@ export const firePlayerShot = (state: GameState, aim: Vec) => {
 
   createProjectile(state, {
     pos: origin,
-    vel: { x: direction.x * player.projectileSpeed, y: direction.y * player.projectileSpeed },
-    radius: player.projectileRadius * sizeMultiplier,
+    vel: { x: direction.x * profile.projectileSpeed, y: direction.y * profile.projectileSpeed },
+    radius: profile.projectileRadius * sizeMultiplier,
     damage,
     baseDamage,
     critKind: critRoll.kind,
-    color: player.color,
+    color: profile.color,
     life: 2.75,
     owner: 'player',
-    behavior: player.behavior,
-    pierce: (player.behavior === 'pierce' ? 999 : 0) + state.effects.projectileDurability,
+    behavior: profile.behavior,
+    pierce: (profile.behavior === 'pierce' ? 999 : 0) + state.effects.projectileDurability,
     hitIds: [],
-    aoeRadius: player.explosionRadius * state.effects.frictionRadiusMultiplier,
-    homingStrength: player.homingStrength,
+    aoeRadius: profile.aoeRadius * state.effects.frictionRadiusMultiplier,
+    homingStrength: profile.homingStrength,
     chargeBonus: chargeMultiplier - 1,
     projectileHp: 1 + state.effects.projectileDurability,
     projectileMaxHp: 1 + state.effects.projectileDurability,

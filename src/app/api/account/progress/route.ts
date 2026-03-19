@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readSessionFromCookies } from '@/lib/auth';
-import { normalizeAccountProgress } from '@/lib/progress';
+import { isDealerStaffActiveForProgress, normalizeAccountProgress } from '@/lib/progress';
 import { normalizeRunStatus, validateRunCheckpoint, verifyRunSessionToken } from '@/lib/run-validation';
 
 export const runtime = 'nodejs';
@@ -42,8 +42,9 @@ const saveProgress = async (request: Request) => {
 
   let highScore = currentUser.highScore;
   let highestWave = currentUser.highestWave;
+  const rankingBlockedByDealerStaff = isDealerStaffActiveForProgress(progress);
 
-  if (runSessionId) {
+  if (runSessionId && !rankingBlockedByDealerStaff) {
     const runToken = await verifyRunSessionToken(runSessionId, session.userId);
     if (runToken) {
       const validation = validateRunCheckpoint({

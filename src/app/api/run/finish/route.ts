@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readSessionFromCookies } from '@/lib/auth';
-import { normalizeAccountProgress } from '@/lib/progress';
+import { isDealerStaffActiveForProgress, normalizeAccountProgress } from '@/lib/progress';
 import { normalizeRunStatus, validateRunCheckpoint, verifyRunSessionToken } from '@/lib/run-validation';
 
 export const runtime = 'nodejs';
@@ -48,8 +48,9 @@ export async function POST(request: Request) {
   let highestWave = currentUser.highestWave;
   let accepted = false;
   let reason: string | null = null;
+  const rankingBlockedByDealerStaff = isDealerStaffActiveForProgress(progress);
 
-  if (runSessionId) {
+  if (runSessionId && !rankingBlockedByDealerStaff) {
     const runToken = await verifyRunSessionToken(runSessionId, session.userId);
     if (runToken) {
       const validation = validateRunCheckpoint({
@@ -93,9 +94,10 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({
-    ok: accepted,
-    error: reason,
+    ok: accepted && !rankingBlockedByDealerStaff,
+    error: rankingBlockedByDealerStaff ? 'Dealer Staff disables ranking for that match.' : reason,
+    rankingBlocked: rankingBlockedByDealerStaff,
     highScore: user.highScore,
     highestWave: user.highestWave,
-  }, { status: accepted ? 200 : 422, headers });
+  }, { status: accepted || rankingBlockedByDealerStaff ? 200 : 422, headers });
 }
