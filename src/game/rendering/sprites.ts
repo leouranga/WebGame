@@ -353,18 +353,122 @@ const drawBrainBoss = (ctx: CanvasRenderingContext2D, enemy: Enemy, tick: number
   ctx.restore();
 };
 
+
+const drawBosslado = (ctx: CanvasRenderingContext2D, enemy: Enemy, tick: number) => {
+  const enraged = enemy.bossEnraged || enemy.hp <= enemy.maxHp * 0.5;
+  const orbEye = enemy.kind === 'bossladoOrb';
+  const iris = orbEye ? '#4c1d95' : '#2563eb';
+  const pupil = orbEye ? '#7c3aed' : '#111827';
+  const pulse = 1 + Math.sin(tick * 0.01 + enemy.hoverPhase) * 0.018;
+
+  ctx.save();
+  ctx.scale(pulse, pulse);
+  glow(ctx, 0, 0, enemy.width * 0.85, orbEye ? 'rgba(168,85,247,0.22)' : 'rgba(248,113,113,0.16)', 0.2);
+
+  if (!enraged) {
+    fillEllipse(ctx, 0, 0, enemy.width * 0.46, enemy.height * 0.4, '#f8fafc');
+    fillEllipse(ctx, 0, 0, enemy.width * 0.5, enemy.height * 0.43, 'rgba(255,255,255,0.08)');
+    ctx.strokeStyle = 'rgba(120,20,20,0.95)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, enemy.width * 0.46, enemy.height * 0.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = -2; i <= 2; i += 1) {
+      const y = i * enemy.height * 0.1;
+      ctx.strokeStyle = 'rgba(239,68,68,0.95)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-enemy.width * 0.34, y - enemy.height * 0.06);
+      ctx.bezierCurveTo(-enemy.width * 0.55, y - enemy.height * 0.14, -enemy.width * 0.6, y + enemy.height * 0.06, -enemy.width * 0.72, y + enemy.height * 0.02);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(enemy.width * 0.34, y - enemy.height * 0.06);
+      ctx.bezierCurveTo(enemy.width * 0.55, y - enemy.height * 0.14, enemy.width * 0.6, y + enemy.height * 0.06, enemy.width * 0.72, y + enemy.height * 0.02);
+      ctx.stroke();
+    }
+  }
+
+  if (enraged) {
+    const bodyR = Math.min(enemy.width, enemy.height) * 0.42;
+    const mouthR = bodyR * 0.52;
+
+    fillCircle(ctx, 0, 0, bodyR, '#f8fafc');
+    ctx.strokeStyle = 'rgba(120,20,20,0.98)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, bodyR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = -2; i <= 2; i += 1) {
+      const y = i * enemy.height * 0.1;
+      ctx.strokeStyle = 'rgba(239,68,68,0.95)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-bodyR * 0.8, y - enemy.height * 0.05);
+      ctx.bezierCurveTo(-bodyR * 1.02, y - enemy.height * 0.15, -bodyR * 1.12, y + enemy.height * 0.06, -bodyR * 1.34, y + enemy.height * 0.01);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(bodyR * 0.8, y - enemy.height * 0.05);
+      ctx.bezierCurveTo(bodyR * 1.02, y - enemy.height * 0.15, bodyR * 1.12, y + enemy.height * 0.06, bodyR * 1.34, y + enemy.height * 0.01);
+      ctx.stroke();
+    }
+
+    fillCircle(ctx, 0, 0, mouthR, '#231010');
+    ctx.strokeStyle = 'rgba(127,29,29,0.95)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, mouthR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = 0; i < 8; i += 1) {
+      const angle = (-Math.PI * 0.82) + (i / 7) * (Math.PI * 1.64);
+      const toothBaseR = mouthR * 0.88;
+      const toothTipR = mouthR * 0.35;
+      const toothSpread = mouthR * 0.12;
+      const nx = Math.cos(angle);
+      const ny = Math.sin(angle);
+      const tx = -ny;
+      const ty = nx;
+      const baseX = nx * toothBaseR;
+      const baseY = ny * toothBaseR;
+      const leftX = baseX + tx * toothSpread;
+      const leftY = baseY + ty * toothSpread;
+      const rightX = baseX - tx * toothSpread;
+      const rightY = baseY - ty * toothSpread;
+      const tipX = nx * toothTipR;
+      const tipY = ny * toothTipR;
+
+      ctx.beginPath();
+      ctx.moveTo(leftX, leftY);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(rightX, rightY);
+      ctx.closePath();
+      ctx.fillStyle = '#d6bb7b';
+      ctx.fill();
+    }
+  } else {
+    fillCircle(ctx, enemy.width * 0.13, 0, enemy.width * 0.18, iris);
+    fillCircle(ctx, enemy.width * 0.15, 0, enemy.width * 0.1, pupil);
+    fillCircle(ctx, enemy.width * 0.18, -enemy.height * 0.04, enemy.width * 0.035, '#f8fafc');
+  }
+  ctx.restore();
+};
+
 export const drawEnemySprite = (ctx: CanvasRenderingContext2D, enemy: Enemy, tick: number) => {
   ctx.save();
   ctx.translate(enemy.pos.x, enemy.pos.y);
 
-  const hpAlpha = 0.18 + 0.82 * Math.max(0, enemy.hp / Math.max(1, enemy.maxHp));
+  const hpAlpha = enemy.kind === 'bossladoLaser' || enemy.kind === 'bossladoOrb'
+    ? 1
+    : 0.18 + 0.82 * Math.max(0, enemy.hp / Math.max(1, enemy.maxHp));
   ctx.globalAlpha = hpAlpha;
 
   fillEllipse(ctx, 0, enemy.height * 0.52, enemy.width * 0.42, enemy.height * 0.1, 'rgba(15,23,42,0.26)');
 
   if (enemy.kind === 'wisp') drawWisp(ctx, enemy, tick);
   if (enemy.kind === 'crusher') drawCrusher(ctx, enemy, tick);
-  if (enemy.kind === 'spitter') drawSpitter(ctx, enemy, tick);
+  if (enemy.kind === 'spitter' || enemy.kind === 'splitter') drawSpitter(ctx, enemy, tick);
   if (enemy.kind === 'oracle') drawOracle(ctx, enemy, tick);
   if (enemy.kind === 'mauler') drawMauler(ctx, enemy, tick);
   if (enemy.kind === 'stalker') drawStalker(ctx, enemy, tick);
@@ -373,6 +477,7 @@ export const drawEnemySprite = (ctx: CanvasRenderingContext2D, enemy: Enemy, tic
   if (enemy.kind === 'hexeye') drawHexeye(ctx, enemy, tick);
   if (enemy.kind === 'starseer') drawStarseer(ctx, enemy, tick);
   if (enemy.kind === 'brainboss') drawBrainBoss(ctx, enemy, tick);
+  if (enemy.kind === 'bossladoLaser' || enemy.kind === 'bossladoOrb') drawBosslado(ctx, enemy, tick);
 
   if (enemy.hitFlash > 0) {
     ctx.globalAlpha = enemy.hitFlash * 0.9;

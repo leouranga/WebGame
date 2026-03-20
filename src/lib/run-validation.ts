@@ -12,19 +12,20 @@ const getRunTokenSecret = () => {
   return new TextEncoder().encode(secret);
 };
 
-const getWaveSpawnCount = (waveNumber: number) => ((waveNumber === 1 || waveNumber === 50) ? 1 : Math.max(2, 2 + (waveNumber - 1) * 2));
+const getWaveSpawnCount = (waveNumber: number) => (waveNumber === 50 ? 1 : waveNumber === 100 ? 2 : waveNumber + 1);
 
 const getMaxEnemyScoreValue = (waveNumber: number) => {
   if (waveNumber === 50) return 500;
-  if (waveNumber >= 45) return 34;
-  if (waveNumber >= 40) return 28;
-  if (waveNumber >= 35) return 30;
-  if (waveNumber >= 30) return 23;
-  if (waveNumber >= 25) return 21;
-  if (waveNumber >= 20) return 18;
-  if (waveNumber >= 15) return 16;
-  if (waveNumber >= 10) return 14;
-  return 12;
+  if (waveNumber === 100) return 260;
+  if (waveNumber >= 80) return 34;
+  if (waveNumber >= 70) return 30;
+  if (waveNumber >= 60) return 23;
+  if (waveNumber >= 51) return 21;
+  if (waveNumber >= 40) return 18;
+  if (waveNumber >= 30) return 16;
+  if (waveNumber >= 20) return 14;
+  if (waveNumber >= 10) return 12;
+  return 9;
 };
 
 const getScoreUpperBoundForWave = (currentWave: number) => {

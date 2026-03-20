@@ -36,6 +36,7 @@ export type EnemyKind =
   | 'wisp'
   | 'crusher'
   | 'spitter'
+  | 'splitter'
   | 'oracle'
   | 'mauler'
   | 'stalker'
@@ -43,7 +44,9 @@ export type EnemyKind =
   | 'slinger'
   | 'hexeye'
   | 'starseer'
-  | 'brainboss';
+  | 'brainboss'
+  | 'bossladoLaser'
+  | 'bossladoOrb';
 
 export type GameStatus = 'menu' | 'playing' | 'paused' | 'between' | 'death' | 'shop' | 'ascension';
 
@@ -172,6 +175,11 @@ export type Enemy = {
   bossOrbCooldown: number;
   bossLaserCooldown: number;
   bossBlastCooldown: number;
+  bossEnraged: boolean;
+  bossDashCooldown: number;
+  bossDashTime: number;
+  bossDashTargetX: number;
+  bossDashTargetY: number;
 };
 
 export type OrbKind = 'soul' | 'heal';
@@ -271,6 +279,7 @@ export type WaveState = {
   spawned: number;
   cleared: number;
   spawnTimer: number;
+  spawnKinds: EnemyKind[];
 };
 
 export type UiRects = {

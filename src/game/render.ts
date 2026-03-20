@@ -530,17 +530,37 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
 };
 
 const drawEnemies = (ctx: CanvasRenderingContext2D, state: GameState) => {
+  const bossladoEyes = state.enemies.filter((enemy) => enemy.kind === 'bossladoLaser' || enemy.kind === 'bossladoOrb');
+  if (bossladoEyes.length >= 2) {
+    const [a, b] = bossladoEyes;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,20,20,0.88)';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a.pos.x, a.pos.y);
+    ctx.bezierCurveTo(a.pos.x + 80, a.pos.y + 24, b.pos.x - 80, b.pos.y + 24, b.pos.x, b.pos.y);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(245,190,190,0.34)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(a.pos.x, a.pos.y);
+    ctx.bezierCurveTo(a.pos.x + 80, a.pos.y + 24, b.pos.x - 80, b.pos.y + 24, b.pos.x, b.pos.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   for (const enemy of state.enemies) {
     drawEnemySprite(ctx, enemy, state.tick);
 
     const ratio = Math.max(0, enemy.hp / enemy.maxHp);
-    const isBoss = enemy.kind === 'brainboss';
+    const isBoss = enemy.kind === 'brainboss' || enemy.kind === 'bossladoLaser' || enemy.kind === 'bossladoOrb';
     const hpWidth = isBoss ? Math.max(220, enemy.width * 1.15) : enemy.width + 12;
     const hpHeight = isBoss ? 10 : 5;
     const barY = enemy.pos.y - enemy.height / 2 - (isBoss ? 26 : 16);
     ctx.fillStyle = 'rgba(15,23,42,0.88)';
     ctx.fillRect(enemy.pos.x - hpWidth / 2, barY, hpWidth, hpHeight);
-    ctx.fillStyle = isBoss ? '#fb7185' : (enemy.isRanged ? '#f472b6' : '#22c55e');
+    ctx.fillStyle = enemy.kind === 'bossladoOrb' ? '#a855f7' : isBoss ? '#fb7185' : (enemy.isRanged ? '#f472b6' : '#22c55e');
     ctx.fillRect(enemy.pos.x - hpWidth / 2, barY, hpWidth * ratio, hpHeight);
 
     if (isBoss) {
@@ -548,7 +568,8 @@ const drawEnemies = (ctx: CanvasRenderingContext2D, state: GameState) => {
       ctx.font = '12px Arial';
       ctx.fillStyle = '#fce7f3';
       ctx.textAlign = 'center';
-      ctx.fillText('The Brain', enemy.pos.x, barY - 6);
+      const label = enemy.kind === 'brainboss' ? 'The Brain' : 'Bosslado';
+      ctx.fillText(label, enemy.pos.x, barY - 6);
       ctx.restore();
     }
   }
@@ -920,28 +941,63 @@ const drawProjectiles = (ctx: CanvasRenderingContext2D, state: GameState) => {
     }
 
     if (projectile.behavior === 'enemyLaser') {
-      const length = 34;
-      const speed = Math.hypot(projectile.vel.x, projectile.vel.y) || 1;
-      const dirX = projectile.vel.x / speed;
-      const dirY = projectile.vel.y / speed;
-      const tailX = projectile.pos.x - dirX * length;
-      const tailY = projectile.pos.y - dirY * length;
+      const from = projectile.lineFrom ?? { x: projectile.pos.x - 34, y: projectile.pos.y };
+      const to = projectile.pos;
       ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = 'rgba(251,113,133,0.95)';
-      ctx.lineWidth = 9;
-      ctx.shadowColor = '#fb7185';
-      ctx.shadowBlur = 14;
+      ctx.globalCompositeOperation = 'source-over';
+
+      ctx.strokeStyle = 'rgba(21,255,102,0.32)';
+      ctx.lineWidth = Math.max(40, projectile.radius * 2.1);
+      ctx.shadowColor = 'rgba(21,255,102,1)';
+      ctx.shadowBlur = 26;
       ctx.beginPath();
-      ctx.moveTo(tailX, tailY);
-      ctx.lineTo(projectile.pos.x, projectile.pos.y);
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.88)';
-      ctx.lineWidth = 3;
+
+      ctx.strokeStyle = 'rgba(0,255,102,0.92)';
+      ctx.lineWidth = Math.max(20, projectile.radius * 1.15);
+      ctx.shadowBlur = 12;
       ctx.beginPath();
-      ctx.moveTo(tailX, tailY);
-      ctx.lineTo(projectile.pos.x, projectile.pos.y);
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
       ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(220,255,235,1)';
+      ctx.lineWidth = Math.max(8, projectile.radius * 0.42);
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+
+      for (let i = 0; i < 5; i += 1) {
+        const t = i / 4;
+        const px = from.x + (to.x - from.x) * t;
+        const py = from.y + (to.y - from.y) * t;
+        ctx.fillStyle = i === 2 ? 'rgba(220,255,235,1)' : 'rgba(0,255,102,0.88)';
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(6, projectile.radius * (0.16 + 0.03 * i)), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const startGlow = ctx.createRadialGradient(from.x, from.y, 0, from.x, from.y, Math.max(24, projectile.radius));
+      startGlow.addColorStop(0, 'rgba(220,255,235,1)');
+      startGlow.addColorStop(0.35, 'rgba(0,255,102,0.75)');
+      startGlow.addColorStop(1, 'rgba(0,255,102,0)');
+      ctx.fillStyle = startGlow;
+      ctx.beginPath();
+      ctx.arc(from.x, from.y, Math.max(24, projectile.radius), 0, Math.PI * 2);
+      ctx.fill();
+
+      const endGlow = ctx.createRadialGradient(to.x, to.y, 0, to.x, to.y, Math.max(34, projectile.radius * 1.4));
+      endGlow.addColorStop(0, 'rgba(240,255,245,1)');
+      endGlow.addColorStop(0.28, 'rgba(21,255,102,0.82)');
+      endGlow.addColorStop(1, 'rgba(21,255,102,0)');
+      ctx.fillStyle = endGlow;
+      ctx.beginPath();
+      ctx.arc(to.x, to.y, Math.max(34, projectile.radius * 1.4), 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
       continue;
     }

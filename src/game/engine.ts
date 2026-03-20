@@ -1,6 +1,6 @@
 import { GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_PULL_RADIUS, PLAYER_I_FRAMES, UPGRADE_REROLL_COST } from '@/game/constants';
 import { createPlayer, getMageDefinition, MAGES } from '@/game/characters/mages';
-import { createEnemy } from '@/game/monsters/monsters';
+import { buildWaveSpawnKinds, createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
 import { createProjectile, fireEnemyShot, firePlayerShot, resolvePlayerProjectileProfile, rollCritical } from '@/game/spells/projectiles';
 import { clamp, createTerrain, getGroundY, lerp } from '@/game/terrain';
@@ -102,7 +102,7 @@ const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
     pos: { x: enemy.pos.x, y: enemy.pos.y + enemy.height * 0.06 },
     vel: { x: dir.x * 120, y: dir.y * 120 },
     radius: 18,
-    damage: 8,
+    damage: 1,
     color: '#f43f5e',
     life: 15,
     owner: 'enemy',
@@ -125,7 +125,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
     vel: { x: dir.x * 820, y: dir.y * 820 },
     radius: 8,
     damage: 2,
-    color: '#fb7185',
+    color: '#22c55e',
     life: 2.8,
     owner: 'enemy',
     behavior: 'enemyLaser',
@@ -145,6 +145,68 @@ const castBrainBossBlast = (state: GameState, enemy: Enemy) => {
   if (distance(state.player.pos, enemy.pos) <= BRAIN_BOSS_BLAST_RADIUS + Math.max(state.player.width, state.player.height) * 0.35) {
     damagePlayer(state, 5, enemy);
   }
+};
+
+const isBosslado = (enemy: Enemy) => enemy.kind === 'bossladoLaser' || enemy.kind === 'bossladoOrb';
+
+const fireBossladoOrb = (state: GameState, enemy: Enemy) => {
+  const dir = normalize({ x: state.player.pos.x - enemy.pos.x, y: state.player.pos.y - enemy.pos.y });
+  createProjectile(state, {
+    pos: { x: enemy.pos.x, y: enemy.pos.y + enemy.height * 0.08 },
+    vel: { x: dir.x * 160, y: dir.y * 160 },
+    radius: 16,
+    damage: 300,
+    color: '#a855f7',
+    life: 12,
+    owner: 'enemy',
+    behavior: 'enemy',
+    pierce: 0,
+    hitIds: [],
+    aoeRadius: 0,
+    homingStrength: 0,
+    fromUpgrade: 'bossladoOrb',
+    sourceEnemyId: enemy.id,
+    projectileHp: 7,
+    projectileMaxHp: 7,
+  });
+};
+
+const fireBossladoLaser = (state: GameState, enemy: Enemy) => {
+  const dir = normalize({ x: state.player.pos.x - enemy.pos.x, y: state.player.pos.y - enemy.pos.y });
+  createProjectile(state, {
+    pos: { x: enemy.pos.x, y: enemy.pos.y },
+    vel: { x: dir.x * 360, y: dir.y * 360 },
+    radius: 9,
+    damage: 250,
+    color: '#22c55e',
+    life: 4.5,
+    owner: 'enemy',
+    behavior: 'enemy',
+    pierce: 0,
+    hitIds: [],
+    aoeRadius: 0,
+    homingStrength: 0,
+    fromUpgrade: 'bossladoLaser',
+    sourceEnemyId: enemy.id,
+    projectileHp: 1,
+    projectileMaxHp: 1,
+  });
+};
+
+const startBossladoDash = (state: GameState, enemy: Enemy) => {
+  const onLeftSide = enemy.pos.x < state.width * 0.5;
+  const edgeInset = enemy.width * 0.56 + 14;
+  const targetX = onLeftSide ? state.width - edgeInset : edgeInset;
+  const dashY = clamp(100 + Math.random() * (state.height - 280), 104, state.height - 176);
+  enemy.bossDashTargetX = targetX;
+  enemy.bossDashTargetY = dashY;
+  const dx = targetX - enemy.pos.x;
+  const dy = dashY - enemy.pos.y;
+  const dist = Math.max(1, Math.hypot(dx, dy));
+  const speed = 1280 + Math.random() * 140;
+  enemy.bossDashTime = dist / speed;
+  enemy.vel.x = (dx / dist) * speed;
+  enemy.vel.y = (dy / dist) * speed;
 };
 
 const spawnLightningStrike = (state: GameState, to: Vec, style: 'thunder' | 'soul' | 'god' = 'thunder', from?: Vec, flashRadius?: number, boltWidth?: number) => {
@@ -388,7 +450,7 @@ const getAttackSpeedFactor = (state: GameState) => {
   return Math.max(0.85, Math.min(3.2, baseInterval / Math.max(0.06, getCurrentFireInterval(state))));
 };
 const getFrictionTravelThreshold = (state: GameState) => Math.max(56, 132 - Math.max(0, state.effects.frictionShots - 1) * 16);
-const getWaveSpawnCount = (waveNumber: number) => (waveNumber === 50 ? 1 : waveNumber === 1 ? 2 : Math.max(2, 2 + (waveNumber - 1) * 2));
+const getWaveSpawnCount = (waveNumber: number) => (waveNumber === 50 ? 1 : waveNumber === 100 ? 2 : waveNumber + 1);
 
 const beginDeathScreen = (state: GameState) => {
   state.status = 'death';
@@ -468,8 +530,8 @@ const damagePlayer = (state: GameState, rawAmount: number, attacker?: Enemy | Pr
 const trySoulDrop = (state: GameState, enemy: Enemy) => {
   const soulChance = enemy.soulDropChance + state.effects.soulDropBonus;
   if (Math.random() <= soulChance) {
-    createOrb(state, enemy.pos, enemy.soulDropAmount, 'soul');
-    addText(state, `+${enemy.soulDropAmount} soul`, { x: enemy.pos.x, y: enemy.pos.y - 20 }, '#c084fc');
+    createOrb(state, enemy.pos, 1, 'soul');
+    addText(state, '+1 soul', { x: enemy.pos.x, y: enemy.pos.y - 20 }, '#c084fc');
   }
 
   if (Math.random() <= state.effects.healOrbChance) {
@@ -700,7 +762,7 @@ const resolvePlayerEnemyCollision = (state: GameState, enemy: Enemy) => {
 const resolvePlayerEnemyCollisions = (state: GameState) => {
   for (let pass = 0; pass < 2; pass += 1) {
     for (const enemy of state.enemies) {
-      if (enemy.kind === 'brainboss') continue;
+      if (enemy.kind === 'brainboss' || isBosslado(enemy)) continue;
       resolvePlayerEnemyCollision(state, enemy);
     }
   }
@@ -710,11 +772,11 @@ const separateEnemies = (state: GameState) => {
   for (let pass = 0; pass < 2; pass += 1) {
     for (let i = 0; i < state.enemies.length; i += 1) {
       const a = state.enemies[i];
-      if (a.hp <= 0 || a.deathHandled || a.kind === 'brainboss') continue;
+      if (a.hp <= 0 || a.deathHandled || a.kind === 'brainboss' || isBosslado(a)) continue;
 
       for (let j = i + 1; j < state.enemies.length; j += 1) {
         const b = state.enemies[j];
-        if (b.hp <= 0 || b.deathHandled || b.kind === 'brainboss') continue;
+        if (b.hp <= 0 || b.deathHandled || b.kind === 'brainboss' || isBosslado(b)) continue;
 
         const dx = b.pos.x - a.pos.x;
         const dy = b.pos.y - a.pos.y;
@@ -741,6 +803,39 @@ const separateEnemies = (state: GameState) => {
   }
 };
 
+
+const separateBossladoEyes = (state: GameState) => {
+  const eyes = state.enemies.filter((enemy) => enemy.hp > 0 && !enemy.deathHandled && isBosslado(enemy));
+  if (eyes.length < 2) return;
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (let i = 0; i < eyes.length; i += 1) {
+      const a = eyes[i];
+      for (let j = i + 1; j < eyes.length; j += 1) {
+        const b = eyes[j];
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const minDistance = (Math.max(a.width, a.height) + Math.max(b.width, b.height)) * 0.62;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq >= minDistance * minDistance) continue;
+
+        const distanceValue = Math.sqrt(distanceSq);
+        const nx = distanceValue > 0.0001 ? dx / distanceValue : (i % 2 === 0 ? 1 : -1);
+        const ny = distanceValue > 0.0001 ? dy / distanceValue : 0;
+        const overlap = minDistance - Math.max(distanceValue, 0.001);
+        const push = overlap * 0.5 + 0.6;
+
+        a.pos.x -= nx * push;
+        a.pos.y -= ny * push;
+        b.pos.x += nx * push;
+        b.pos.y += ny * push;
+
+        clampEnemyToArena(state, a);
+        clampEnemyToArena(state, b);
+      }
+    }
+  }
+};
 
 const getThunderHitTarget = (state: GameState, from: Vec, to: Vec, boltWidth: number) => {
   const abx = to.x - from.x;
@@ -804,6 +899,7 @@ const createState = (): GameState => {
       spawned: 0,
       cleared: 0,
       spawnTimer: 0.24,
+      spawnKinds: buildWaveSpawnKinds(1, getWaveSpawnCount(1)),
     },
     fireTimer: 0.1,
     souls: 0,
@@ -944,6 +1040,7 @@ const startWave = (state: GameState, number: number) => {
     spawned: 0,
     cleared: 0,
     spawnTimer: 0.24,
+    spawnKinds: buildWaveSpawnKinds(number, getWaveSpawnCount(number)),
   };
   state.status = 'playing';
   state.fireTimer = 0.1;
@@ -1949,6 +2046,72 @@ const updateEnemies = (state: GameState, dt: number) => {
     const speedFactor = Math.max(0, 1 - enemy.slow);
     let targetY = rangedDesiredY;
 
+    if (isBosslado(enemy)) {
+      const hoverBaseX = enemy.kind === 'bossladoLaser' ? state.width * 0.38 : state.width * 0.62;
+      const lateralWave = Math.sin(state.tick * 0.0032 + enemy.hoverPhase) * 44;
+      const verticalWave = Math.sin(state.tick * 0.0025 + enemy.hoverPhase * 1.35) * 30;
+      const driftWave = Math.cos(state.tick * 0.0018 + enemy.hoverPhase * 0.7) * 12;
+      const hoverX = hoverBaseX + lateralWave + driftWave;
+      targetY = 148 + verticalWave;
+      if (enemy.spawnElapsed < enemy.spawnDuration) {
+        const t = enemy.spawnElapsed / enemy.spawnDuration;
+        const eased = t * t * (3 - 2 * t);
+        enemy.pos.x = lerp(enemy.pos.x, hoverX, 0.05);
+        enemy.pos.y = enemy.spawnStartY + (targetY - enemy.spawnStartY) * eased;
+      } else {
+        if (!enemy.bossEnraged && enemy.hp <= enemy.maxHp * 0.5) {
+          enemy.bossEnraged = true;
+          enemy.bossDashCooldown = 0.2;
+        }
+
+        if (enemy.bossEnraged) {
+          enemy.bossDashCooldown -= dt;
+          enemy.bossDashTime -= dt;
+          if (enemy.bossDashTime > 0) {
+            enemy.pos.x += enemy.vel.x * dt;
+            enemy.pos.y += enemy.vel.y * dt;
+            if (enemyTouchesPlayer(state, enemy)) {
+              damagePlayer(state, enemy.bossEnraged && isBosslado(enemy) ? 300 : Math.max(1, enemy.damage), enemy);
+            }
+            const reached = Math.hypot(enemy.pos.x - enemy.bossDashTargetX, enemy.pos.y - enemy.bossDashTargetY) <= Math.max(28, enemy.width * 0.28);
+            if (reached) {
+              enemy.pos.x = enemy.bossDashTargetX;
+              enemy.pos.y = enemy.bossDashTargetY;
+              enemy.bossDashTime = 0;
+              enemy.vel.x = 0;
+              enemy.vel.y = 0;
+              enemy.bossDashCooldown = 0.18 + Math.random() * 0.38;
+              enemy.bossDashTargetY = clamp(100 + Math.random() * (state.height - 280), 104, state.height - 176);
+            }
+          } else if (enemy.bossDashCooldown <= 0) {
+            startBossladoDash(state, enemy);
+          } else {
+            enemy.pos.y = lerp(enemy.pos.y, enemy.bossDashTargetY, 0.08);
+            enemy.vel.x = 0;
+            enemy.vel.y = 0;
+          }
+        } else {
+          enemy.pos.x = lerp(enemy.pos.x, hoverX, 0.09);
+          enemy.pos.y = lerp(enemy.pos.y, targetY, 0.09);
+          enemy.bossOrbCooldown -= dt;
+          enemy.bossLaserCooldown -= dt;
+          if (enemy.kind === 'bossladoOrb' && enemy.bossOrbCooldown <= 0) {
+            fireBossladoOrb(state, enemy);
+            enemy.bossOrbCooldown = 2.4 + Math.random() * 0.75;
+          }
+          if (enemy.kind === 'bossladoLaser' && enemy.bossLaserCooldown <= 0) {
+            fireBossladoLaser(state, enemy);
+            enemy.bossLaserCooldown = 0.11 + Math.random() * 0.07;
+          }
+        }
+      }
+
+      if (enemyTouchesPlayer(state, enemy)) {
+        damagePlayer(state, enemy.bossEnraged && isBosslado(enemy) ? 300 : Math.max(1, enemy.damage), enemy);
+      }
+      continue;
+    }
+
     if (enemy.kind === 'brainboss') {
       const targetX = clamp(player.pos.x, enemy.width / 2 + 48, state.width - enemy.width / 2 - 48);
       targetY = 132 + Math.sin(state.tick * 0.0026 + enemy.hoverPhase) * 24;
@@ -1980,7 +2143,7 @@ const updateEnemies = (state: GameState, dt: number) => {
       }
 
       if (enemyTouchesPlayer(state, enemy)) {
-        damagePlayer(state, Math.max(2, enemy.damage), enemy);
+        damagePlayer(state, enemy.bossEnraged && isBosslado(enemy) ? 300 : Math.max(1, enemy.damage), enemy);
         if (state.effects.bodyDamage > 0 && enemy.bodyHitCooldown <= 0) {
           damageEnemy(state, enemy, state.effects.bodyDamage, '#f97316');
           enemy.bodyHitCooldown = 0.45;
@@ -2123,6 +2286,7 @@ const updateEnemies = (state: GameState, dt: number) => {
   }
 
   separateEnemies(state);
+  separateBossladoEyes(state);
   resolvePlayerEnemyCollisions(state);
 
   for (const enemy of state.enemies) {
@@ -2248,12 +2412,32 @@ const updateProjectiles = (state: GameState, dt: number) => {
       projectile.vel.y = lerp(projectile.vel.y, desired.y * 120, dt * 1.8);
     }
 
+    if (projectile.owner === 'enemy' && projectile.fromUpgrade === 'bossladoOrb') {
+      const desired = normalize({ x: state.player.pos.x - projectile.pos.x, y: state.player.pos.y - projectile.pos.y });
+      projectile.vel.x = lerp(projectile.vel.x, desired.x * 180, dt * 2.2);
+      projectile.vel.y = lerp(projectile.vel.y, desired.y * 180, dt * 2.2);
+    }
+
     projectile.pos.x += projectile.vel.x * dt;
     projectile.pos.y += projectile.vel.y * dt;
 
     if (projectile.owner === 'enemy') {
       const player = state.player;
-      if (rectsOverlap(
+      const playerCenter = { x: player.pos.x, y: player.pos.y - player.height * 0.08 };
+      if (projectile.behavior === 'enemyLaser' && projectile.lineFrom) {
+        const hitRadius = Math.max(player.width, player.height) * 0.28 + projectile.radius;
+        if (distanceToSegment(playerCenter, projectile.lineFrom, projectile.pos) <= hitRadius) {
+          if (state.effects.enemyMissChance > 0 && Math.random() * 100 < state.effects.enemyMissChance) {
+            addText(state, 'miss', { x: player.pos.x, y: player.pos.y - 34 }, '#e5e7eb');
+            projectile.life = 0;
+            continue;
+          }
+          if (player.invuln > 0 && state.effects.absorbent) healPlayer(state, 1);
+          damagePlayer(state, projectile.damage, projectile);
+          projectile.life = 0;
+          continue;
+        }
+      } else if (rectsOverlap(
         projectile.pos.x - projectile.radius,
         projectile.pos.y - projectile.radius,
         projectile.radius * 2,
@@ -2492,7 +2676,8 @@ const updateWave = (state: GameState, dt: number) => {
   if (state.status !== 'playing' || state.player.hp <= 0) return;
   state.wave.spawnTimer -= dt;
   if (state.wave.spawned < state.wave.toSpawn && state.wave.spawnTimer <= 0) {
-    state.enemies.push(createEnemy(state.nextId++, state.wave.number));
+    const forcedKind = state.wave.spawnKinds[state.wave.spawned];
+    state.enemies.push(createEnemy(state.nextId++, state.wave.number, forcedKind));
     state.wave.spawned += 1;
     state.wave.spawnTimer = Math.max(0.12, 0.34 - state.wave.number * 0.006);
   }
