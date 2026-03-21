@@ -1,4 +1,4 @@
-import { GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_PULL_RADIUS, PLAYER_I_FRAMES, UPGRADE_REROLL_COST } from '@/game/constants';
+import { GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_PULL_RADIUS, PLAYER_I_FRAMES, PLAYER_START_X, UPGRADE_REROLL_COST } from '@/game/constants';
 import { createPlayer, getMageDefinition, MAGES } from '@/game/characters/mages';
 import { buildWaveSpawnKinds, createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
@@ -102,7 +102,7 @@ const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
     pos: { x: enemy.pos.x, y: enemy.pos.y + enemy.height * 0.06 },
     vel: { x: dir.x * 120, y: dir.y * 120 },
     radius: 18,
-    damage: 1,
+    damage: 300,
     color: '#f43f5e',
     life: 15,
     owner: 'enemy',
@@ -124,7 +124,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
     pos: { x: enemy.pos.x, y: enemy.pos.y },
     vel: { x: dir.x * 820, y: dir.y * 820 },
     radius: 8,
-    damage: 2,
+    damage: 1500,
     color: '#22c55e',
     life: 2.8,
     owner: 'enemy',
@@ -143,7 +143,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
 const castBrainBossBlast = (state: GameState, enemy: Enemy) => {
   addImpact(state, { x: enemy.pos.x, y: enemy.pos.y }, BRAIN_BOSS_BLAST_RADIUS, 'rgba(251,113,133,0.72)', 0.34);
   if (distance(state.player.pos, enemy.pos) <= BRAIN_BOSS_BLAST_RADIUS + Math.max(state.player.width, state.player.height) * 0.35) {
-    damagePlayer(state, 5, enemy);
+    damagePlayer(state, 300, enemy);
   }
 };
 
@@ -155,7 +155,7 @@ const fireBossladoOrb = (state: GameState, enemy: Enemy) => {
     pos: { x: enemy.pos.x, y: enemy.pos.y + enemy.height * 0.08 },
     vel: { x: dir.x * 160, y: dir.y * 160 },
     radius: 16,
-    damage: 300,
+    damage: 1800,
     color: '#a855f7',
     life: 12,
     owner: 'enemy',
@@ -1721,6 +1721,20 @@ const updatePlayer = (state: GameState, input: InputState, dt: number) => {
 
   player.pos.x = nextX;
   player.pos.y = nextY;
+
+  const offscreenTopThreshold = -state.height * 0.35;
+  if (player.pos.y + player.height / 2 < offscreenTopThreshold) {
+    const respawnX = state.width * 0.5;
+    const spawnGround = getGroundY(state.terrain, respawnX);
+    player.pos.x = respawnX;
+    player.pos.y = spawnGround - player.height / 2;
+    player.vel.x = 0;
+    player.vel.y = 0;
+    player.onGround = true;
+    player.jumpsRemaining = Math.max(0, player.maxJumps - 1);
+    state.effects.jumpHoldTimer = 0;
+    state.effects.airPeakY = player.pos.y;
+  }
 
   if (player.invuln > 0) {
     player.invuln = Math.max(0, player.invuln - dt);

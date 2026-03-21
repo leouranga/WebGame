@@ -232,8 +232,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   bossladoLaser: {
     width: 100,
     height: 100,
-    hp: 100000,
-    damage: 450,
+    hp: 300000,
+    damage: 2700,
     speed: 90,
     ranged: true,
     preferredRange: 0,
@@ -252,8 +252,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   bossladoOrb: {
     width: 100,
     height: 100,
-    hp: 100000,
-    damage: 450,
+    hp: 300000,
+    damage: 2700,
     speed: 84,
     ranged: true,
     preferredRange: 0,
@@ -471,8 +471,35 @@ const pickKind = (wave: number): EnemyKind => {
   return distribution[distribution.length - 1]?.[0] ?? "wisp";
 };
 
-const getWaveHealthBonus = (wave: number) => Math.floor(wave / 10) * 5;
-const getWaveDamageBonus = (wave: number) => Math.floor(wave / 10);
+const getWaveHealthBonus = (wave: number, baseHp: number) => {
+  const upTo20 = Math.min(Math.max(wave - 1, 0), 19);
+  const waves21To40 = Math.min(Math.max(wave - 20, 0), 20);
+  const waves41To49 = Math.min(Math.max(wave - 40, 0), 9);
+  const waves51Plus = Math.max(wave - 50, 0);
+
+  return Math.ceil(
+    baseHp *
+      (upTo20 * 0.05 +
+        waves21To40 * 0.1 +
+        waves41To49 * 0.15 +
+        waves51Plus * 0.15),
+  );
+};
+
+const getWaveDamageBonus = (wave: number, baseDamage: number) => {
+  const upTo20 = Math.min(Math.max(wave - 1, 0), 19);
+  const waves21To40 = Math.min(Math.max(wave - 20, 0), 20);
+  const waves41To49 = Math.min(Math.max(wave - 40, 0), 9);
+  const waves51Plus = Math.max(wave - 50, 0);
+
+  return Math.ceil(
+    baseDamage *
+      (upTo20 * 0.1 +
+        waves21To40 * 0.05 +
+        waves41To49 * 0.03 +
+        waves51Plus * 0.02),
+  );
+};
 
 const isBossWave = (wave: number) => wave === 50 || wave === 100;
 const getBossladoKind = (nextId: number): EnemyKind =>
@@ -507,10 +534,8 @@ export const createEnemy = (
     kind === "brainboss" || bosslado ? 1 : 0.94 + Math.random() * 0.28;
   const width = Math.round(base.width * sizeScale * 1.6);
   const height = Math.round(base.height * sizeScale * 1.6);
-  const healthBonus =
-    kind === "brainboss" || bosslado ? 0 : getWaveHealthBonus(wave);
-  const damageBonus =
-    kind === "brainboss" || bosslado ? 0 : getWaveDamageBonus(wave);
+  const healthBonus = getWaveHealthBonus(wave, base.hp);
+  const damageBonus = getWaveDamageBonus(wave, base.damage);
   const speedScale =
     kind === "brainboss" || bosslado ? 1 : 1 + (1 - sizeScale) * 0.22;
 

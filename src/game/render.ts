@@ -1161,11 +1161,23 @@ const findHoveredUpgrade = (state: GameState): UpgradeCard | null => {
 
 const drawUpgradeTooltip = (ctx: CanvasRenderingContext2D, state: GameState, card: UpgradeCard, anchorX: number, anchorY: number) => {
   ctx.save();
-  ctx.font = '14px Arial';
-  const label = card.name;
+
   const paddingX = 12;
-  const width = Math.max(120, ctx.measureText(label).width + paddingX * 2);
-  const height = 34;
+  const paddingY = 10;
+  const maxWidth = Math.min(280, state.width - 28);
+
+  ctx.font = '15px Arial';
+  const title = card.name;
+  const titleWidth = ctx.measureText(title).width;
+
+  ctx.font = '13px Arial';
+  const descriptionLineHeight = 16;
+
+  const width = Math.max(150, Math.min(maxWidth, Math.max(titleWidth + paddingX * 2, 180)));
+  const innerWidth = width - paddingX * 2;
+  ctx.font = '13px Arial';
+  const wrappedDescription = getWrappedLines(ctx, card.description, innerWidth);
+  const height = paddingY * 2 + 18 + 6 + wrappedDescription.length * descriptionLineHeight;
   const x = Math.min(Math.max(anchorX - width / 2, 14), state.width - width - 14);
   const y = Math.max(12, anchorY - height - 14);
 
@@ -1174,10 +1186,19 @@ const drawUpgradeTooltip = (ctx: CanvasRenderingContext2D, state: GameState, car
   ctx.strokeStyle = 'rgba(226,232,240,0.32)';
   ctx.lineWidth = 2;
   ctx.strokeRect(x, y, width, height);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.font = '15px Arial';
   ctx.fillStyle = rarityColor(card.rarity);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, x + width / 2, y + height / 2 + 1);
+  ctx.fillText(title, x + paddingX, y + paddingY);
+
+  ctx.font = '13px Arial';
+  ctx.fillStyle = '#e2e8f0';
+  wrappedDescription.forEach((line, index) => {
+    ctx.fillText(line, x + paddingX, y + paddingY + 24 + index * descriptionLineHeight);
+  });
+
   ctx.restore();
 };
 
@@ -1221,16 +1242,19 @@ const drawHud = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (active.length > 0) {
     const iconSize = 24;
     const itemWidth = 62;
-    const iconsPerRow = Math.max(1, Math.floor((rightPanel.x - (leftPanel.x + leftPanel.w + 28)) / itemWidth));
-    const startX = leftPanel.x + leftPanel.w + 24;
-    const startY = topY + 8;
+    const rowHeight = 28;
+    const bottomMargin = 10;
+    const startX = 32;
+    const iconsPerRow = Math.max(1, Math.floor((state.width - startX * 2) / itemWidth));
+    const maxRows = 2;
+    const visibleCount = Math.min(active.length, iconsPerRow * maxRows);
+    const startY = state.height - bottomMargin - iconSize - (maxRows - 1) * rowHeight;
 
-    active.forEach(({ card, count }, index) => {
+    active.slice(0, visibleCount).forEach(({ card, count }, index) => {
       const row = Math.floor(index / iconsPerRow);
       const col = index % iconsPerRow;
       const x = startX + col * itemWidth;
-      const y = startY + row * 26;
-      if (y > topY + 54) return;
+      const y = startY + row * rowHeight;
 
       drawUpgradeIcon(ctx, card.icon, x, y, iconSize, hudUpgradeIconColor(card.rarity), 'plain');
       ctx.fillStyle = '#f8fafc';
