@@ -112,6 +112,9 @@ export function GameClient() {
   });
   const runSessionIdRef = useRef<string | null>(null);
   const snapshotRef = useRef<RunSnapshot | null>(null);
+  const betweenUiAwaitingReleaseRef = useRef(false);
+  const betweenUiIgnoreNextClickRef = useRef(false);
+  const lastStatusRef = useRef<GameState['status']>('menu');
 
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [account, setAccount] = useState<AccountResponse['user']>(null);
@@ -367,11 +370,19 @@ export function GameClient() {
 
     const onMouseUp = () => {
       input.mouseDown = false;
+      if (betweenUiAwaitingReleaseRef.current) {
+        betweenUiAwaitingReleaseRef.current = false;
+        betweenUiIgnoreNextClickRef.current = true;
+      }
     };
 
     const onClick = (event: MouseEvent) => {
       if (dialogRef.current) return;
       updateMouse(event);
+      if ((state.status === 'between' || state.status === 'ascension') && betweenUiIgnoreNextClickRef.current) {
+        betweenUiIgnoreNextClickRef.current = false;
+        return;
+      }
       handlePointerClick(state, input.mouse);
     };
 
@@ -398,6 +409,18 @@ export function GameClient() {
       const previousSnapshot = snapshotRef.current ?? createRunSnapshot(state, runSessionIdRef.current);
 
       updateGameState(state, input, dt);
+
+      if (state.status !== lastStatusRef.current) {
+        if (state.status === 'between' || state.status === 'ascension') {
+          betweenUiAwaitingReleaseRef.current = input.mouseDown;
+          betweenUiIgnoreNextClickRef.current = false;
+        } else {
+          betweenUiAwaitingReleaseRef.current = false;
+          betweenUiIgnoreNextClickRef.current = false;
+        }
+        lastStatusRef.current = state.status;
+      }
+
       context.clearRect(0, 0, canvas.width, canvas.height);
       renderGame(context, state);
       canvas.style.cursor = isPointerOnInteractiveUi(state) ? 'pointer' : 'default';

@@ -733,7 +733,8 @@ const resolvePlayerEnemyCollision = (state: GameState, enemy: Enemy) => {
 
   if (overlapX <= 0 || overlapY <= 0) return;
 
-  const enemyShare = state.effects.bulldozer ? 0.56 : 0.24;
+  const pushWeightMultiplier = 1.5;
+  const enemyShare = state.effects.bulldozer ? 0.78 : 0.24 / pushWeightMultiplier;
   const playerShare = 1 - enemyShare;
 
   if (overlapX <= overlapY * 1.15) {
@@ -745,7 +746,7 @@ const resolvePlayerEnemyCollision = (state: GameState, enemy: Enemy) => {
   } else {
     const sy = dy >= 0 ? 1 : -1;
     const separation = overlapY + 0.6;
-    const verticalEnemyShare = state.effects.bulldozer ? 0.38 : 0.12;
+    const verticalEnemyShare = state.effects.bulldozer ? 0.52 : 0.12 / pushWeightMultiplier;
     const verticalPlayerShare = 1 - verticalEnemyShare;
     player.pos.y += sy * separation * verticalPlayerShare;
     enemy.pos.y -= sy * separation * verticalEnemyShare;
@@ -1368,7 +1369,7 @@ function applyUpgrade(state: GameState, upgradeId: UpgradeId, silent = false) {
       break;
     case 'thunderboltPlus':
       state.effects.thunderboltCount += 1;
-      state.effects.thunderboltDamageBonus += 8;
+      state.effects.thunderboltDamageBonus += 12;
       reduceThunderboltCooldown(state, 0.2);
       state.effects.thunderboltTimer = Math.min(state.effects.thunderboltTimer, state.effects.thunderboltInterval);
       break;
@@ -1754,15 +1755,18 @@ const updatePlayer = (state: GameState, input: InputState, dt: number) => {
 
 const enemyTouchesPlayer = (state: GameState, enemy: Enemy) => {
   const player = state.player;
+  const playerCenterY = player.pos.y - 6;
   const dx = Math.abs(player.pos.x - enemy.pos.x);
-  const dy = Math.abs((player.pos.y - 6) - enemy.pos.y);
+  const dy = Math.abs(playerCenterY - enemy.pos.y);
 
   if (enemy.isRanged) {
+    const contactPaddingX = 10;
+    const contactPaddingY = 12;
     return rectsOverlap(
-      player.pos.x - player.width / 2,
-      player.pos.y - player.height / 2,
-      player.width,
-      player.height,
+      player.pos.x - player.width / 2 - contactPaddingX,
+      playerCenterY - player.height / 2 - contactPaddingY,
+      player.width + contactPaddingX * 2,
+      player.height + contactPaddingY * 2,
       enemy.pos.x - enemy.width / 2,
       enemy.pos.y - enemy.height / 2,
       enemy.width,
@@ -2182,8 +2186,8 @@ const updateEnemies = (state: GameState, dt: number) => {
 
       enemy.pos.x = clamp(enemy.pos.x, enemy.width / 2 + 10, state.width - enemy.width / 2 - 10);
       const terrainHoverY = getGroundY(state.terrain, enemy.pos.x) - enemy.hoverHeight;
-      const verticalRoam = Math.sin(state.tick * 0.002 + enemy.hoverPhase * 1.6) * 46
-        + Math.cos(state.tick * 0.0013 + enemy.id * 0.37) * 24;
+      const verticalRoam = Math.sin(state.tick * 0.002 + enemy.hoverPhase * 1.6) * 30
+        + Math.cos(state.tick * 0.0013 + enemy.id * 0.37) * 16;
       targetY = terrainHoverY + Math.sin(state.tick * 0.004 + enemy.hoverPhase) * 12 + verticalRoam;
       const rangedCeiling = enemy.height / 2 + 12;
       const rangedFloor = getGroundY(state.terrain, enemy.pos.x) - enemy.height * 0.42;
@@ -2196,7 +2200,7 @@ const updateEnemies = (state: GameState, dt: number) => {
         enemy.pos.y = lerp(enemy.pos.y, targetY, Math.max(0.04, rangedSettleFactor + 0.02));
       }
       enemy.shootCooldown -= dt;
-      const maxFireDistance = enemy.cornerShooter ? 1400 : Math.max(980, enemy.preferredRange + 320);
+      const maxFireDistance = enemy.cornerShooter ? 1500 : Math.max(1180, enemy.preferredRange + 380);
       if (enemy.shootCooldown <= 0 && planarDistance < maxFireDistance) {
         fireEnemyShot(state, enemy);
         enemy.shootCooldown = (enemy.shootRate + Math.random() * 0.35) / MONSTER_ATTACK_SPEED_MULTIPLIER;
@@ -2273,7 +2277,8 @@ const updateEnemies = (state: GameState, dt: number) => {
       }
       if (!enemy.isRanged) {
         const movementFactor = clamp(Math.abs(player.vel.x) / 180, 0.75, 1.35);
-        const pushStrength = state.effects.bulldozer ? 12.5 : 3.4 * movementFactor;
+        const pushWeightMultiplier = 1.5;
+        const pushStrength = state.effects.bulldozer ? 18 : (6 * movementFactor) / pushWeightMultiplier;
         const push = normalize({
           x: player.pos.x - enemy.pos.x,
           y: ((player.pos.y - 6) - enemy.pos.y) * (state.effects.bulldozer ? 0.55 : 0.2),

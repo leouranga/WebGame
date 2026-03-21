@@ -28,8 +28,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   crusher: {
     width: 52,
     height: 52,
-    hp: 5000,
-    damage: 3,
+    hp: 50,
+    damage: 5,
     speed: 62,
     ranged: false,
     preferredRange: 0,
@@ -48,8 +48,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   mauler: {
     width: 48,
     height: 48,
-    hp: 100,
-    damage: 15,
+    hp: 250,
+    damage: 30,
     speed: 74,
     ranged: false,
     preferredRange: 0,
@@ -57,7 +57,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     projectileSpeed: 0,
     projectileRadius: 0,
     projectileColor: "#000000",
-    bodyColor: "#ef4444",
+    bodyColor: "#75ef44",
     hoverHeight: 150,
     soulDropChance: 0.2,
     soulDropAmount: 1,
@@ -68,8 +68,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   stalker: {
     width: 45,
     height: 45,
-    hp: 250,
-    damage: 40,
+    hp: 500,
+    damage: 60,
     speed: 86,
     ranged: false,
     preferredRange: 0,
@@ -77,10 +77,10 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     projectileSpeed: 0,
     projectileRadius: 0,
     projectileColor: "#000000",
-    bodyColor: "#22c55e",
+    bodyColor: "#22a7c9",
     hoverHeight: 176,
     soulDropChance: 0.24,
-    soulDropAmount: 2,
+    soulDropAmount: 1,
     scoreValue: 21,
     minWave: 25,
     weight: 0.72,
@@ -88,8 +88,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   behemoth: {
     width: 70,
     height: 70,
-    hp: 600,
-    damage: 60,
+    hp: 1000,
+    damage: 150,
     speed: 54,
     ranged: false,
     preferredRange: 0,
@@ -100,7 +100,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     bodyColor: "#8b5cf6",
     hoverHeight: 142,
     soulDropChance: 0.3,
-    soulDropAmount: 3,
+    soulDropAmount: 1,
     scoreValue: 30,
     minWave: 35,
     weight: 0.42,
@@ -119,7 +119,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     projectileSpeed: 190,
     projectileRadius: 4,
     projectileColor: "#fb923c",
-    bodyColor: "#fdba74",
+    bodyColor: "#f56200",
     hoverHeight: 250,
     soulDropChance: 0.12,
     soulDropAmount: 1,
@@ -130,16 +130,16 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   spitter: {
     width: 42,
     height: 42,
-    hp: 100,
-    damage: 15,
+    hp: 200,
+    damage: 30,
     speed: 84,
     ranged: true,
     preferredRange: 410,
     shootRate: 2.55,
     projectileSpeed: 205,
     projectileRadius: 5,
-    projectileColor: "#f59e0b",
-    bodyColor: "#fbbf24",
+    projectileColor: "#ab0bf5",
+    bodyColor: "#f85b83",
     hoverHeight: 300,
     soulDropChance: 0.16,
     soulDropAmount: 1,
@@ -147,32 +147,11 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     minWave: 10,
     weight: 1,
   },
-
-  splitter: {
-    width: 44,
-    height: 44,
-    hp: 150,
-    damage: 18,
-    speed: 82,
-    ranged: true,
-    preferredRange: 430,
-    shootRate: 2.7,
-    projectileSpeed: 195,
-    projectileRadius: 6,
-    projectileColor: "#f97316",
-    bodyColor: "#fb923c",
-    hoverHeight: 306,
-    soulDropChance: 0.18,
-    soulDropAmount: 1,
-    scoreValue: 16,
-    minWave: 30,
-    weight: 1,
-  },
   slinger: {
     width: 46,
     height: 46,
-    hp: 200,
-    damage: 25,
+    hp: 400,
+    damage: 50,
     speed: 80,
     ranged: true,
     preferredRange: 455,
@@ -191,19 +170,19 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   oracle: {
     width: 50,
     height: 50,
-    hp: 300,
-    damage: 30,
+    hp: 800,
+    damage: 100,
     speed: 76,
     ranged: true,
     preferredRange: 520,
     shootRate: 3.2,
     projectileSpeed: 220,
     projectileRadius: 6,
-    projectileColor: "#fb7185",
-    bodyColor: "#f472b6",
+    projectileColor: "#413839",
+    bodyColor: "#7bbd7e",
     hoverHeight: 342,
     soulDropChance: 0.24,
-    soulDropAmount: 2,
+    soulDropAmount: 1,
     scoreValue: 23,
     minWave: 30,
     weight: 0.66,
@@ -211,19 +190,19 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   hexeye: {
     width: 56,
     height: 56,
-    hp: 500,
-    damage: 35,
+    hp: 1500,
+    damage: 150,
     speed: 72,
     ranged: true,
     preferredRange: 575,
     shootRate: 3.45,
     projectileSpeed: 165,
     projectileRadius: 12,
-    projectileColor: "#a855f7",
-    bodyColor: "#c084fc",
+    projectileColor: "#c4d8c2",
+    bodyColor: "#3a21a8",
     hoverHeight: 356,
     soulDropChance: 0.28,
-    soulDropAmount: 2,
+    soulDropAmount: 1,
     scoreValue: 28,
     minWave: 40,
     weight: 0.5,
@@ -231,42 +210,41 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   starseer: {
     width: 62,
     height: 62,
-    hp: 700,
-    damage: 1,
+    hp: 2000,
+    damage: 250,
     speed: 68,
     ranged: true,
     preferredRange: 700,
     shootRate: 3.8,
     projectileSpeed: 150,
     projectileRadius: 10,
-    projectileColor: "#eab308",
-    bodyColor: "#fde047",
+    projectileColor: "#ea0808",
+    bodyColor: "#c0c400",
     hoverHeight: 390,
     soulDropChance: 0.34,
-    soulDropAmount: 3,
+    soulDropAmount: 1,
     scoreValue: 34,
     minWave: 45,
     weight: 0.35,
     cornerShooter: true,
   },
 
-
   bossladoLaser: {
     width: 100,
     height: 100,
-    hp: 5000,
-    damage: 1,
+    hp: 100000,
+    damage: 450,
     speed: 90,
     ranged: true,
     preferredRange: 0,
     shootRate: 0,
     projectileSpeed: 0,
     projectileRadius: 0,
-    projectileColor: "#f43f5e",
+    projectileColor: "#3ff47b",
     bodyColor: "#ffffff",
     hoverHeight: 142,
     soulDropChance: 1,
-    soulDropAmount: 6,
+    soulDropAmount: 1,
     scoreValue: 260,
     minWave: 100,
     weight: 0,
@@ -274,8 +252,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   bossladoOrb: {
     width: 100,
     height: 100,
-    hp: 500,
-    damage: 1,
+    hp: 100000,
+    damage: 450,
     speed: 84,
     ranged: true,
     preferredRange: 0,
@@ -286,7 +264,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     bodyColor: "#ffffff",
     hoverHeight: 142,
     soulDropChance: 1,
-    soulDropAmount: 6,
+    soulDropAmount: 1,
     scoreValue: 260,
     minWave: 100,
     weight: 0,
@@ -294,8 +272,8 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
   brainboss: {
     width: 168,
     height: 142,
-    hp: 3500,
-    damage: 100,
+    hp: 50000,
+    damage: 300,
     speed: 68,
     ranged: true,
     preferredRange: 0,
@@ -306,7 +284,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     bodyColor: "#f472b6",
     hoverHeight: 188,
     soulDropChance: 1,
-    soulDropAmount: 10,
+    soulDropAmount: 1,
     scoreValue: 500,
     minWave: 50,
     weight: 0,
@@ -316,132 +294,135 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
 const getWaveDistribution = (wave: number): Array<[EnemyKind, number]> => {
   if (wave >= 110) {
     return [
-      ['wisp', 5],
-      ['splitter', 5],
-      ['mauler', 3],
-      ['slinger', 5],
-      ['stalker', 3],
-      ['oracle', 5],
-      ['behemoth', 9],
-      ['hexeye', 5],
-      ['starseer', 60],
+      ["wisp", 5],
+      ["spitter", 5],
+      ["mauler", 3],
+      ["slinger", 5],
+      ["stalker", 3],
+      ["oracle", 5],
+      ["behemoth", 9],
+      ["hexeye", 5],
+      ["starseer", 60],
     ];
   }
 
   if (wave >= 101) {
     return [
-      ['wisp', 5],
-      ['splitter', 5],
-      ['mauler', 3],
-      ['slinger', 5],
-      ['stalker', 3],
-      ['oracle', 5],
-      ['behemoth', 9],
-      ['hexeye', 20],
-      ['starseer', 45],
+      ["wisp", 5],
+      ["spitter", 5],
+      ["mauler", 3],
+      ["slinger", 5],
+      ["stalker", 3],
+      ["oracle", 5],
+      ["behemoth", 9],
+      ["hexeye", 20],
+      ["starseer", 45],
     ];
   }
 
   if (wave >= 90) {
     return [
-      ['wisp', 5],
-      ['splitter', 5],
-      ['mauler', 3],
-      ['slinger', 5],
-      ['stalker', 3],
-      ['oracle', 15],
-      ['behemoth', 9],
-      ['hexeye', 25],
-      ['starseer', 30],
+      ["wisp", 5],
+      ["spitter", 5],
+      ["mauler", 3],
+      ["slinger", 5],
+      ["stalker", 3],
+      ["oracle", 15],
+      ["behemoth", 9],
+      ["hexeye", 25],
+      ["starseer", 30],
     ];
   }
 
   if (wave >= 80) {
     return [
-      ['wisp', 5],
-      ['splitter', 5],
-      ['mauler', 3],
-      ['slinger', 15],
-      ['stalker', 3],
-      ['oracle', 30],
-      ['behemoth', 9],
-      ['hexeye', 30],
+      ["wisp", 5],
+      ["spitter", 5],
+      ["mauler", 3],
+      ["slinger", 15],
+      ["stalker", 3],
+      ["oracle", 30],
+      ["behemoth", 9],
+      ["hexeye", 30],
     ];
   }
 
   if (wave >= 70) {
     return [
-      ['wisp', 5],
-      ['splitter', 10],
-      ['mauler', 3],
-      ['slinger', 25],
-      ['stalker', 7],
-      ['oracle', 45],
-      ['behemoth', 5],
+      ["wisp", 5],
+      ["spitter", 10],
+      ["mauler", 3],
+      ["slinger", 25],
+      ["stalker", 7],
+      ["oracle", 45],
+      ["behemoth", 5],
     ];
   }
 
   if (wave >= 60) {
     return [
-      ['wisp', 5],
-      ['splitter', 20],
-      ['mauler', 5],
-      ['slinger', 30],
-      ['stalker', 10],
-      ['oracle', 30],
+      ["wisp", 5],
+      ["spitter", 20],
+      ["mauler", 5],
+      ["slinger", 30],
+      ["stalker", 10],
+      ["oracle", 30],
     ];
   }
 
   if (wave >= 51) {
     return [
-      ['wisp', 5],
-      ['splitter', 35],
-      ['mauler', 10],
-      ['slinger', 45],
-      ['stalker', 5],
+      ["wisp", 5],
+      ["spitter", 35],
+      ["mauler", 10],
+      ["slinger", 45],
+      ["stalker", 5],
     ];
   }
 
   if (wave >= 40) {
     return [
-      ['wisp', 10],
-      ['splitter', 45],
-      ['crusher', 5],
-      ['mauler', 10],
-      ['slinger', 30],
+      ["wisp", 10],
+      ["spitter", 45],
+      ["crusher", 5],
+      ["mauler", 10],
+      ["slinger", 30],
     ];
   }
 
   if (wave >= 30) {
     return [
-      ['wisp', 30],
-      ['splitter', 55],
-      ['crusher', 10],
-      ['mauler', 5],
+      ["wisp", 30],
+      ["spitter", 55],
+      ["crusher", 10],
+      ["mauler", 5],
     ];
   }
 
   if (wave >= 20) {
     return [
-      ['wisp', 50],
-      ['spitter', 35],
-      ['crusher', 15],
+      ["wisp", 50],
+      ["spitter", 35],
+      ["crusher", 15],
     ];
   }
 
   if (wave >= 10) {
     return [
-      ['wisp', 85],
-      ['crusher', 15],
+      ["wisp", 85],
+      ["crusher", 15],
     ];
   }
 
-  return [['wisp', 100]];
+  return [["wisp", 100]];
 };
 
-export const buildWaveSpawnKinds = (wave: number, total: number): EnemyKind[] => {
-  if (wave === 50) return ['brainboss'];
-  if (wave === 100) return ['bossladoLaser', 'bossladoOrb'];
+export const buildWaveSpawnKinds = (
+  wave: number,
+  total: number,
+): EnemyKind[] => {
+  if (wave === 50) return ["brainboss"];
+  if (wave === 100) return ["bossladoLaser", "bossladoOrb"];
 
   const distribution = getWaveDistribution(wave);
   if (total <= 0) return [];
@@ -487,41 +468,63 @@ const pickKind = (wave: number): EnemyKind => {
     roll -= weight;
     if (roll <= 0) return kind;
   }
-  return distribution[distribution.length - 1]?.[0] ?? 'wisp';
+  return distribution[distribution.length - 1]?.[0] ?? "wisp";
 };
 
 const getWaveHealthBonus = (wave: number) => Math.floor(wave / 10) * 5;
 const getWaveDamageBonus = (wave: number) => Math.floor(wave / 10);
 
 const isBossWave = (wave: number) => wave === 50 || wave === 100;
-const getBossladoKind = (nextId: number): EnemyKind => (nextId % 2 === 1 ? 'bossladoLaser' : 'bossladoOrb');
+const getBossladoKind = (nextId: number): EnemyKind =>
+  nextId % 2 === 1 ? "bossladoLaser" : "bossladoOrb";
 
-export const createEnemy = (nextId: number, wave: number, forcedKind?: EnemyKind): Enemy => {
-  const kind = forcedKind ?? (wave === 50 ? "brainboss" : wave === 100 ? getBossladoKind(nextId) : pickKind(wave));
-  const bosslado = kind === 'bossladoLaser' || kind === 'bossladoOrb';
+export const createEnemy = (
+  nextId: number,
+  wave: number,
+  forcedKind?: EnemyKind,
+): Enemy => {
+  const kind =
+    forcedKind ??
+    (wave === 50
+      ? "brainboss"
+      : wave === 100
+        ? getBossladoKind(nextId)
+        : pickKind(wave));
+  const bosslado = kind === "bossladoLaser" || kind === "bossladoOrb";
   const startX =
     kind === "brainboss"
       ? GAME_WIDTH * 0.5
       : bosslado
-        ? (kind === 'bossladoLaser' ? GAME_WIDTH * 0.34 : GAME_WIDTH * 0.66)
+        ? kind === "bossladoLaser"
+          ? GAME_WIDTH * 0.34
+          : GAME_WIDTH * 0.66
         : 56 + Math.random() * (GAME_WIDTH - 112);
-  const startY = kind === "brainboss" ? -220 : bosslado ? -180 : -90 - Math.random() * 180;
+  const startY =
+    kind === "brainboss" ? -220 : bosslado ? -180 : -90 - Math.random() * 180;
   const base = MONSTER_BASES[kind];
 
-  const sizeScale = kind === "brainboss" || bosslado ? 1 : 0.94 + Math.random() * 0.28;
+  const sizeScale =
+    kind === "brainboss" || bosslado ? 1 : 0.94 + Math.random() * 0.28;
   const width = Math.round(base.width * sizeScale * 1.6);
   const height = Math.round(base.height * sizeScale * 1.6);
-  const healthBonus = kind === "brainboss" || bosslado ? 0 : getWaveHealthBonus(wave);
-  const damageBonus = kind === "brainboss" || bosslado ? 0 : getWaveDamageBonus(wave);
-  const speedScale = kind === "brainboss" || bosslado ? 1 : 1 + (1 - sizeScale) * 0.22;
+  const healthBonus =
+    kind === "brainboss" || bosslado ? 0 : getWaveHealthBonus(wave);
+  const damageBonus =
+    kind === "brainboss" || bosslado ? 0 : getWaveDamageBonus(wave);
+  const speedScale =
+    kind === "brainboss" || bosslado ? 1 : 1 + (1 - sizeScale) * 0.22;
 
-  const spawnDuration = kind === "brainboss" ? 3.4 : bosslado ? 2.6 : 2.9 + Math.random() * 0.35;
+  const spawnDuration =
+    kind === "brainboss" ? 3.4 : bosslado ? 2.6 : 2.9 + Math.random() * 0.35;
 
   return {
     id: nextId,
     kind,
     pos: { x: startX, y: startY },
-    vel: { x: 0, y: kind === "brainboss" || bosslado ? 0 : 22 + Math.random() * 16 },
+    vel: {
+      x: 0,
+      y: kind === "brainboss" || bosslado ? 0 : 22 + Math.random() * 16,
+    },
     width,
     height,
     hp: Math.ceil(base.hp + healthBonus),
@@ -532,10 +535,10 @@ export const createEnemy = (nextId: number, wave: number, forcedKind?: EnemyKind
     preferredRange:
       base.preferredRange *
         (base.ranged && !base.cornerShooter && kind !== "brainboss" && !bosslado
-          ? 1.24
+          ? 1.52
           : 1) +
       (base.ranged && !base.cornerShooter && kind !== "brainboss" && !bosslado
-        ? Math.random() * 72
+        ? Math.random() * 96
         : 0),
     shootCooldown:
       kind === "brainboss" || bosslado
@@ -545,7 +548,10 @@ export const createEnemy = (nextId: number, wave: number, forcedKind?: EnemyKind
             MONSTER_ATTACK_SPEED_MULTIPLIER
           : 0,
     shootRate: base.shootRate,
-    projectileSpeed: base.projectileSpeed,
+    projectileSpeed:
+      base.ranged && kind !== "brainboss" && !bosslado
+        ? base.projectileSpeed * 0.8
+        : base.projectileSpeed,
     projectileRadius: base.projectileRadius,
     projectileColor: base.projectileColor,
     bodyColor: base.bodyColor,
@@ -556,8 +562,8 @@ export const createEnemy = (nextId: number, wave: number, forcedKind?: EnemyKind
         : bosslado
           ? 1
           : base.ranged
-          ? 1.12 + Math.random() * 0.2
-          : 0.95 + Math.random() * 0.1),
+            ? 1.32 + Math.random() * 0.22
+            : 0.95 + Math.random() * 0.1),
     hoverPhase: Math.random() * Math.PI * 2,
     cornerShooter: Boolean(base.cornerShooter),
     soulDropChance: base.soulDropChance,
@@ -576,9 +582,17 @@ export const createEnemy = (nextId: number, wave: number, forcedKind?: EnemyKind
     spawnElapsed: 0,
     spawnDuration,
     bossOrbCooldown:
-      kind === "brainboss" ? 2.8 / MONSTER_ATTACK_SPEED_MULTIPLIER : bosslado && kind === 'bossladoOrb' ? 2.6 / MONSTER_ATTACK_SPEED_MULTIPLIER : 999,
+      kind === "brainboss"
+        ? 2.8 / MONSTER_ATTACK_SPEED_MULTIPLIER
+        : bosslado && kind === "bossladoOrb"
+          ? 2.6 / MONSTER_ATTACK_SPEED_MULTIPLIER
+          : 999,
     bossLaserCooldown:
-      kind === "brainboss" ? 1.8 / MONSTER_ATTACK_SPEED_MULTIPLIER : bosslado && kind === 'bossladoLaser' ? 1.55 / MONSTER_ATTACK_SPEED_MULTIPLIER : 999,
+      kind === "brainboss"
+        ? 1.8 / MONSTER_ATTACK_SPEED_MULTIPLIER
+        : bosslado && kind === "bossladoLaser"
+          ? 1.55 / MONSTER_ATTACK_SPEED_MULTIPLIER
+          : 999,
     bossBlastCooldown:
       kind === "brainboss" ? 5.2 / MONSTER_ATTACK_SPEED_MULTIPLIER : 999,
     bossEnraged: false,

@@ -36,7 +36,6 @@ export type EnemyKind =
   | 'wisp'
   | 'crusher'
   | 'spitter'
-  | 'splitter'
   | 'oracle'
   | 'mauler'
   | 'stalker'

@@ -468,7 +468,7 @@ export const drawEnemySprite = (ctx: CanvasRenderingContext2D, enemy: Enemy, tic
 
   if (enemy.kind === 'wisp') drawWisp(ctx, enemy, tick);
   if (enemy.kind === 'crusher') drawCrusher(ctx, enemy, tick);
-  if (enemy.kind === 'spitter' || enemy.kind === 'splitter') drawSpitter(ctx, enemy, tick);
+  if (enemy.kind === 'spitter') drawSpitter(ctx, enemy, tick);
   if (enemy.kind === 'oracle') drawOracle(ctx, enemy, tick);
   if (enemy.kind === 'mauler') drawMauler(ctx, enemy, tick);
   if (enemy.kind === 'stalker') drawStalker(ctx, enemy, tick);
