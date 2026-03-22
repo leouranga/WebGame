@@ -417,6 +417,41 @@ const getWaveDistribution = (wave: number): Array<[EnemyKind, number]> => {
   return [["wisp", 100]];
 };
 
+// Keep stat scaling aligned with the first wave a kind can actually spawn on.
+const MONSTER_UNLOCK_SCAN_LIMIT = 500;
+const SPECIAL_UNLOCK_WAVES: Partial<Record<EnemyKind, number>> = {
+  brainboss: 50,
+  bossladoLaser: 100,
+  bossladoOrb: 100,
+};
+
+const getMonsterUnlockWaves = (): Record<EnemyKind, number> => {
+  const unlockWaves: Partial<Record<EnemyKind, number>> = {
+    ...SPECIAL_UNLOCK_WAVES,
+  };
+
+  for (let wave = 1; wave <= MONSTER_UNLOCK_SCAN_LIMIT; wave += 1) {
+    for (const [kind] of getWaveDistribution(wave)) {
+      if (unlockWaves[kind] === undefined) {
+        unlockWaves[kind] = wave;
+      }
+    }
+  }
+
+  for (const kind of Object.keys(MONSTER_BASES) as EnemyKind[]) {
+    if (unlockWaves[kind] === undefined) {
+      unlockWaves[kind] = MONSTER_BASES[kind].minWave;
+    }
+  }
+
+  return unlockWaves as Record<EnemyKind, number>;
+};
+
+const MONSTER_UNLOCK_WAVES = getMonsterUnlockWaves();
+
+const getMonsterScalingWave = (wave: number, kind: EnemyKind) =>
+  Math.max(1, wave - (MONSTER_UNLOCK_WAVES[kind] ?? 1) + 1);
+
 export const buildWaveSpawnKinds = (
   wave: number,
   total: number,
@@ -471,11 +506,12 @@ const pickKind = (wave: number): EnemyKind => {
   return distribution[distribution.length - 1]?.[0] ?? "wisp";
 };
 
-const getWaveHealthBonus = (wave: number, baseHp: number) => {
-  const upTo20 = Math.min(Math.max(wave - 1, 0), 19);
-  const waves21To40 = Math.min(Math.max(wave - 20, 0), 20);
-  const waves41To49 = Math.min(Math.max(wave - 40, 0), 9);
-  const waves51Plus = Math.max(wave - 50, 0);
+const getWaveHealthBonus = (wave: number, kind: EnemyKind, baseHp: number) => {
+  const scalingWave = getMonsterScalingWave(wave, kind);
+  const upTo20 = Math.min(Math.max(scalingWave - 1, 0), 19);
+  const waves21To40 = Math.min(Math.max(scalingWave - 20, 0), 20);
+  const waves41To49 = Math.min(Math.max(scalingWave - 40, 0), 9);
+  const waves51Plus = Math.max(scalingWave - 50, 0);
 
   return Math.ceil(
     baseHp *
@@ -486,11 +522,12 @@ const getWaveHealthBonus = (wave: number, baseHp: number) => {
   );
 };
 
-const getWaveDamageBonus = (wave: number, baseDamage: number) => {
-  const upTo20 = Math.min(Math.max(wave - 1, 0), 19);
-  const waves21To40 = Math.min(Math.max(wave - 20, 0), 20);
-  const waves41To49 = Math.min(Math.max(wave - 40, 0), 9);
-  const waves51Plus = Math.max(wave - 50, 0);
+const getWaveDamageBonus = (wave: number, kind: EnemyKind, baseDamage: number) => {
+  const scalingWave = getMonsterScalingWave(wave, kind);
+  const upTo20 = Math.min(Math.max(scalingWave - 1, 0), 19);
+  const waves21To40 = Math.min(Math.max(scalingWave - 20, 0), 20);
+  const waves41To49 = Math.min(Math.max(scalingWave - 40, 0), 9);
+  const waves51Plus = Math.max(scalingWave - 50, 0);
 
   return Math.ceil(
     baseDamage *
@@ -534,8 +571,8 @@ export const createEnemy = (
     kind === "brainboss" || bosslado ? 1 : 0.94 + Math.random() * 0.28;
   const width = Math.round(base.width * sizeScale * 1.6);
   const height = Math.round(base.height * sizeScale * 1.6);
-  const healthBonus = getWaveHealthBonus(wave, base.hp);
-  const damageBonus = getWaveDamageBonus(wave, base.damage);
+  const healthBonus = getWaveHealthBonus(wave, kind, base.hp);
+  const damageBonus = getWaveDamageBonus(wave, kind, base.damage);
   const speedScale =
     kind === "brainboss" || bosslado ? 1 : 1 + (1 - sizeScale) * 0.22;
 
