@@ -1,4 +1,4 @@
-import { GAME_WIDTH, MONSTER_ATTACK_SPEED_MULTIPLIER } from "@/game/constants";
+import { BRAIN_BOSS_DAMAGE, GAME_WIDTH, MONSTER_ATTACK_SPEED_MULTIPLIER } from "@/game/constants";
 import type { Enemy, EnemyKind } from "@/game/types";
 
 type EnemyBase = {
@@ -273,7 +273,7 @@ const MONSTER_BASES: Record<EnemyKind, EnemyBase> = {
     width: 168,
     height: 142,
     hp: 50000,
-    damage: 300,
+    damage: BRAIN_BOSS_DAMAGE,
     speed: 68,
     ranged: true,
     preferredRange: 0,

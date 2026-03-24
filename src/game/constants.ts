@@ -8,3 +8,4 @@ export const PLAYER_START_X = 96;
 
 export const UPGRADE_REROLL_COST = 5;
 export const MONSTER_ATTACK_SPEED_MULTIPLIER = 1.6;
+export const BRAIN_BOSS_DAMAGE = 400;

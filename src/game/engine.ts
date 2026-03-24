@@ -1,4 +1,4 @@
-import { GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_PULL_RADIUS, PLAYER_I_FRAMES, PLAYER_START_X, UPGRADE_REROLL_COST } from '@/game/constants';
+import { BRAIN_BOSS_DAMAGE, GAME_HEIGHT, GAME_WIDTH, GRAVITY, MONSTER_ATTACK_SPEED_MULTIPLIER, ORB_PULL_RADIUS, PLAYER_I_FRAMES, PLAYER_START_X, UPGRADE_REROLL_COST } from '@/game/constants';
 import { createPlayer, getMageDefinition, MAGES } from '@/game/characters/mages';
 import { buildWaveSpawnKinds, createEnemy } from '@/game/monsters/monsters';
 import { createShopItems } from '@/game/shop/items';
@@ -86,6 +86,8 @@ const getWispMageDefinition = (state: GameState) => {
 const EXORCIST_RADIUS = 100;
 const MAGE_UNLOCK_COST = 25;
 const BRAIN_BOSS_BLAST_RADIUS = 140;
+const STREAMER_TICK_INTERVAL = 0.5;
+const STREAMER_BASE_DAMAGE = 6;
 
 const createGuestAuth = (): AuthState => ({
   isLoggedIn: false,
@@ -102,7 +104,7 @@ const fireBrainBossOrb = (state: GameState, enemy: Enemy) => {
     pos: { x: enemy.pos.x, y: enemy.pos.y + enemy.height * 0.06 },
     vel: { x: dir.x * 120, y: dir.y * 120 },
     radius: 18,
-    damage: 300,
+    damage: BRAIN_BOSS_DAMAGE,
     color: '#f43f5e',
     life: 15,
     owner: 'enemy',
@@ -124,7 +126,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
     pos: { x: enemy.pos.x, y: enemy.pos.y },
     vel: { x: dir.x * 820, y: dir.y * 820 },
     radius: 8,
-    damage: 1500,
+    damage: BRAIN_BOSS_DAMAGE,
     color: '#22c55e',
     life: 2.8,
     owner: 'enemy',
@@ -143,7 +145,7 @@ const fireBrainBossLaser = (state: GameState, enemy: Enemy) => {
 const castBrainBossBlast = (state: GameState, enemy: Enemy) => {
   addImpact(state, { x: enemy.pos.x, y: enemy.pos.y }, BRAIN_BOSS_BLAST_RADIUS, 'rgba(251,113,133,0.72)', 0.34);
   if (distance(state.player.pos, enemy.pos) <= BRAIN_BOSS_BLAST_RADIUS + Math.max(state.player.width, state.player.height) * 0.35) {
-    damagePlayer(state, 300, enemy);
+    damagePlayer(state, BRAIN_BOSS_DAMAGE, enemy);
   }
 };
 
@@ -289,8 +291,8 @@ const createEffects = (): RunEffects => ({
   reflectDamage: 0,
   superCrits: false,
   streamer: false,
-  streamerTimer: 0.18,
-  streamerInterval: 0.18,
+  streamerTimer: STREAMER_TICK_INTERVAL,
+  streamerInterval: STREAMER_TICK_INTERVAL,
   vampire: false,
   blackHoleOnImpact: false,
   whiteDwarf: false,
@@ -1224,6 +1226,7 @@ const applyAscension = (state: GameState, card: UpgradeCard) => {
       break;
     case 'streamer':
       state.effects.streamer = true;
+      state.effects.streamerTimer = state.effects.streamerInterval;
       break;
     case 'vampire':
       state.effects.vampire = true;
@@ -2006,21 +2009,35 @@ const updateStreamer = (state: GameState, dt: number, input: InputState) => {
 
   const { from, to } = getAimBeamPoints(state, input);
   state.effects.streamerBeam = { from, to, timer: 0.2 };
-
-  state.effects.streamerTimer -= dt;
-  if (state.effects.streamerTimer > 0) return;
-  state.effects.streamerTimer = getCurrentFireInterval(state);
-
-  const attackSpeedLevel = getUpgradeProgressCount(state, 'resonance');
-  const streamerDamage = Math.max(1, attackSpeedLevel / 2);
+  const hitEnemies: Enemy[] = [];
 
   for (const enemy of state.enemies) {
     const hitRadius = Math.max(8, Math.hypot(enemy.width * 0.5, enemy.height * 0.5) + 4);
     const d = distanceToSegment(enemy.pos, from, to);
     if (d <= hitRadius) {
-      damageEnemy(state, enemy, streamerDamage, '#ef4444');
+      hitEnemies.push(enemy);
     }
   }
+
+  if (hitEnemies.length === 0) {
+    state.effects.streamerTimer = state.effects.streamerInterval;
+    return;
+  }
+
+  state.effects.streamerTimer -= dt;
+  if (state.effects.streamerTimer > 0) return;
+
+  const resonanceStacks = getUpgradeProgressCount(state, 'resonance');
+  const streamerDamage = STREAMER_BASE_DAMAGE + resonanceStacks * 0.5;
+
+  do {
+    for (const enemy of hitEnemies) {
+      if (enemy.hp > 0 && !enemy.deathHandled) {
+        damageEnemy(state, enemy, streamerDamage, '#ef4444');
+      }
+    }
+    state.effects.streamerTimer += state.effects.streamerInterval;
+  } while (state.effects.streamerTimer <= 0);
 };
 
 const updateBurningMan = (state: GameState, dt: number) => {
